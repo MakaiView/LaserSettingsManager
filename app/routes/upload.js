@@ -12,7 +12,7 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadPath),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `material_${req.params.id}_${Date.now()}${ext}`);
+    cb(null, `settings_${req.params.sid}_${Date.now()}${ext}`);
   }
 });
 
@@ -27,37 +27,40 @@ const upload = multer({
   }
 });
 
-router.post('/:id', upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file or invalid file type (JPG/PNG/WebP, max 5MB)' });
+// POST /api/upload/:id/:sid
+router.post('/:id/:sid', upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file or invalid type (JPG/PNG/WebP, max 5MB)' });
 
   const db = getDb();
   const imagePath = `/uploads/${req.file.filename}`;
 
   try {
-    const cur = db.prepare('SELECT image_path FROM settings WHERE material_id = ?').get(req.params.id);
+    const cur = db.prepare('SELECT image_path FROM settings WHERE id=? AND material_id=?')
+      .get(req.params.sid, req.params.id);
     if (cur?.image_path) {
       const old = path.join(uploadPath, path.basename(cur.image_path));
       if (fs.existsSync(old)) fs.unlinkSync(old);
     }
-
-    db.prepare('UPDATE settings SET image_path = ?, updated_at = CURRENT_TIMESTAMP WHERE material_id = ?')
-      .run(imagePath, req.params.id);
-
+    db.prepare('UPDATE settings SET image_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND material_id=?')
+      .run(imagePath, req.params.sid, req.params.id);
     res.json({ image_path: imagePath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/:id', (req, res) => {
+// DELETE /api/upload/:id/:sid
+router.delete('/:id/:sid', (req, res) => {
   const db = getDb();
   try {
-    const cur = db.prepare('SELECT image_path FROM settings WHERE material_id = ?').get(req.params.id);
+    const cur = db.prepare('SELECT image_path FROM settings WHERE id=? AND material_id=?')
+      .get(req.params.sid, req.params.id);
     if (cur?.image_path) {
       const file = path.join(uploadPath, path.basename(cur.image_path));
       if (fs.existsSync(file)) fs.unlinkSync(file);
     }
-    db.prepare('UPDATE settings SET image_path = NULL WHERE material_id = ?').run(req.params.id);
+    db.prepare('UPDATE settings SET image_path=NULL WHERE id=? AND material_id=?')
+      .run(req.params.sid, req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

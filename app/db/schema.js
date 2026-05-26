@@ -2,14 +2,11 @@ const path = require('path');
 const fs = require('fs');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../../data/settings.db');
-
-// Use built-in node:sqlite on Node 22+, otherwise better-sqlite3 (Node 20 LXC)
 const nodeMajor = parseInt(process.version.slice(1));
 let db;
 
 function getDb() {
   if (db) return db;
-
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -28,23 +25,20 @@ function getDb() {
   return db;
 }
 
-// Thin wrapper so node:sqlite matches better-sqlite3's API surface
 function wrapNodeSqlite(raw) {
   return {
     exec: (sql) => raw.exec(sql),
     prepare: (sql) => raw.prepare(sql),
-    transaction: (fn) => {
-      return (...args) => {
-        raw.exec('BEGIN');
-        try {
-          const result = fn(...args);
-          raw.exec('COMMIT');
-          return result;
-        } catch (err) {
-          raw.exec('ROLLBACK');
-          throw err;
-        }
-      };
+    transaction: (fn) => (...args) => {
+      raw.exec('BEGIN');
+      try {
+        const r = fn(...args);
+        raw.exec('COMMIT');
+        return r;
+      } catch (err) {
+        raw.exec('ROLLBACK');
+        throw err;
+      }
     }
   };
 }
@@ -56,7 +50,6 @@ function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       category TEXT NOT NULL,
-      subcategory TEXT,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -65,19 +58,28 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-      lens_mm INTEGER DEFAULT 150,
-      power_percent REAL,
+      burn_type TEXT NOT NULL DEFAULT 'Engraving',
+      lens_mm INTEGER NOT NULL DEFAULT 150,
+      -- Laser parameters
       speed_mms REAL,
+      dwell_time_us REAL,
       frequency_khz REAL,
+      pulse_width INTEGER,
       passes INTEGER DEFAULT 1,
-      line_interval_mm REAL DEFAULT 0.08,
-      overlap_mm REAL DEFAULT 0.03,
+      line_interval_mm REAL,
+      -- Photo mode
+      dpi INTEGER,
+      image_mode TEXT,
+      -- Special
+      defocus_mm REAL,
       wobble_enabled BOOLEAN DEFAULT 0,
       wobble_amplitude_mm REAL,
       wobble_frequency_hz REAL,
       fill_type TEXT,
       rotary_enabled BOOLEAN DEFAULT 0,
       rotary_type TEXT,
+      -- Meta
+      is_commarker_reference BOOLEAN DEFAULT 0,
       result_rating INTEGER CHECK(result_rating BETWEEN 1 AND 5),
       result_notes TEXT,
       image_path TEXT,
@@ -87,11 +89,46 @@ function initDb() {
       FOREIGN KEY (material_id) REFERENCES materials(id)
     );
 
+    CREATE TABLE IF NOT EXISTS attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+      burn_type TEXT NOT NULL,
+      lens_mm INTEGER NOT NULL,
+      speed_mms REAL,
+      dwell_time_us REAL,
+      frequency_khz REAL,
+      pulse_width INTEGER,
+      passes INTEGER,
+      line_interval_mm REAL,
+      dpi INTEGER,
+      worked INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (material_id) REFERENCES materials(id)
+    );
+
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT
     );
   `);
+
+  // Run any pending migrations for existing DBs
+  migrate(db);
+}
+
+function migrate(db) {
+  const cols = db.prepare("PRAGMA table_info(settings)").all().map(c => c.name);
+  const add = (col, def) => {
+    if (!cols.includes(col)) db.exec(`ALTER TABLE settings ADD COLUMN ${col} ${def}`);
+  };
+  add('burn_type', "TEXT NOT NULL DEFAULT 'Engraving'");
+  add('dwell_time_us', 'REAL');
+  add('pulse_width', 'INTEGER');
+  add('dpi', 'INTEGER');
+  add('image_mode', 'TEXT');
+  add('defocus_mm', 'REAL');
+  add('is_commarker_reference', 'BOOLEAN DEFAULT 0');
 }
 
 module.exports = { getDb, initDb };

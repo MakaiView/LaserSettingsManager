@@ -904,3 +904,137 @@ a:hover { color: var(--accent-hover); }
 @media (min-width: 768px) {
   .stats-row { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* ── Burn Type Chips (card) ── */
+.card-burn-types { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+.burn-chip {
+  font-size: 10px; padding: 1px 6px;
+  background: var(--accent-dim); border: 1px solid rgba(0,188,212,0.3);
+  border-radius: 3px; color: var(--accent); white-space: nowrap;
+}
+.burn-chip.muted { background: var(--bg-surface2); border-color: var(--border); color: var(--text-secondary); }
+.param-chip.lens { border-color: rgba(255,152,0,0.4); color: var(--warning); }
+
+/* ── Dashboard Favorites ── */
+.stat-card.clickable { cursor: pointer; transition: border-color var(--transition); }
+.stat-card.clickable:hover { border-color: var(--warning); }
+
+.fav-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;
+}
+@media (min-width: 640px) { .fav-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 900px) { .fav-grid { grid-template-columns: repeat(6, 1fr); } }
+
+.fav-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px; cursor: pointer;
+  transition: border-color var(--transition);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.fav-card:hover { border-color: var(--warning); }
+.fav-name { font-size: 12px; font-weight: 600; line-height: 1.3; }
+
+/* ── Lens Tabs ── */
+.lens-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.lens-tab {
+  padding: 6px 18px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  color: var(--text-secondary); transition: all var(--transition);
+}
+.lens-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.lens-tab:hover:not(.active) { border-color: var(--text-secondary); color: var(--text-primary); }
+
+/* ── Detail Page: Section header ── */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; margin-top: 4px;
+}
+.section-header h3 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-secondary);
+}
+
+/* ── Settings Row Card ── */
+.settings-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.ref-rows { margin-top: 10px; }
+
+.settings-row-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 14px;
+}
+.settings-row-card.fav-card { border-color: rgba(249,168,37,0.4); }
+.settings-row-card.ref-card { opacity: 0.85; border-style: dashed; }
+
+.src-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.src-burn-type { display: flex; align-items: center; gap: 8px; flex: 1; }
+.burn-label {
+  font-size: 13px; font-weight: 700; color: var(--text-primary);
+}
+.ref-badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 2px;
+  background: rgba(0,188,212,0.1); border: 1px solid rgba(0,188,212,0.25);
+  color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.src-actions { display: flex; gap: 4px; }
+.src-params { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.src-result { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.src-notes {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* ── Add/Edit Settings Inline Panel ── */
+.settings-add-panel {
+  background: var(--bg-surface2); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+}
+.panel-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--accent); margin-bottom: 14px;
+}
+.settings-row-form .form-section { margin-bottom: 0; }
+
+/* ── Collapsible Sections ── */
+.collapsible-section {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin-top: 16px; overflow: hidden;
+}
+.collapse-toggle {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; background: var(--bg-surface);
+  border: none; color: var(--text-primary); font-family: inherit;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  text-align: left; transition: background var(--transition);
+}
+.collapse-toggle:hover { background: var(--bg-surface2); }
+.collapsible-section > div { padding: 14px 16px; }
+.count-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; border-radius: 10px; padding: 0 6px;
+  background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 700;
+}
+
+/* ── Attempt History ── */
+.attempt-row {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px;
+}
+.attempt-header {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.attempt-params { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.attempt-notes { font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; }
+
+/* ── Danger icon button ── */
+.btn-icon.danger:hover { color: var(--error); border-color: var(--error); }
+
+/* ── Responsive additions ── */
+@media (max-width: 768px) {
+  .fav-grid { grid-template-columns: repeat(2, 1fr); }
+  .lens-tabs { flex-wrap: wrap; }
+  .form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+}

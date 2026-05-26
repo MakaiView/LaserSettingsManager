@@ -19,6 +19,7 @@ initDb();
 seedDb();
 
 app.use('/api/materials', require('./routes/materials'));
+app.use('/api/materials/:id/attempts', require('./routes/attempts'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api', require('./routes/system'));
 

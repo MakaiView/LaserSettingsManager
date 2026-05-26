@@ -197,5 +197,30 @@ Glass=blue, Metal=silver, Stone=brown, Wood=amber, Fabric=purple, PCB=green, Pla
 
 ---
 
+## Pending Change Requests (in-progress — do not lose these)
+
+These were requested after the initial build. Implement in order; check off as done.
+
+- [x] **1. Burn types as subcategories** — `burn_type` field on settings rows. Structure: Category > Material > Burn Type.
+- [x] **2. Attempt history** — `attempts` table + collapsible section on detail page. Log worked/partial/fail.
+- [x] **3. Favorites shortcut on dashboard** — Favorites grid on Dashboard + clickable stat card.
+- [x] **4. Lenses 70mm and 150mm only** — All forms and filters constrained to 70 / 150.
+- [x] **5. Lens tabs within material** — Detail page shows 70mm / 150mm tabs, each listing burn type settings rows.
+- [x] **6. Seed data protection on update** — `seed_version` in app_settings + `is_commarker_reference` flag. Seed only runs on empty DB.
+- [x] **7. PDF-based ComMarker default database** — 156 reference settings from PDF seeded, `is_commarker_reference=1`, shown in collapsible "ComMarker Reference" section on detail page.
+- [x] **8. *(this item)* — Document requests in CLAUDE.md** ✓
+
+### Data model changes required
+- `settings` table: add `burn_type TEXT`, `pulse_width INTEGER`, `dwell_time_us REAL`, `dpi INTEGER`, `image_mode TEXT`, `defocus_mm REAL`, `is_commarker_reference BOOLEAN DEFAULT 0`
+- New `attempts` table: `id, material_id, burn_type, lens_mm, speed_mms, dwell_time_us, frequency_khz, pulse_width, passes, line_interval_mm, dpi, worked INTEGER (0=fail/1=partial/2=success), notes, created_at`
+- Lenses: only 70 and 150 throughout codebase
+
+### PDF source file
+`~/Downloads/Laser/Omni X 6W Material Settings.pdf`
+Pages 1–2: 70mm lens settings. Pages 3–4: 150mm lens settings.
+Categories: Glass/Ceramics, Metal, Tumblers, Acrylic, Plastic/Silicone, Wood, Fabric, Electronics, Food, Sport, Stone/Slate, Paper, Others.
+
+---
+
 ## Future Features (GitHub issues only — do not build now)
 Side-by-side comparison, tag system, print PDF, LightBurn file import, cost tracker, job timer, QR codes, multiple laser profiles, bulk CSV import.

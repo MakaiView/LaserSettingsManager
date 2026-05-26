@@ -4,17 +4,11 @@ const { execSync, exec } = require('child_process');
 const path = require('path');
 const { getDb } = require('../db/schema');
 
-const CATEGORIES = {
-  'Glass':   ['Surface Etch', 'Subsurface 2D', 'Subsurface 3D Crystal', 'Bottle/Curved'],
-  'Metal':   ['Stainless Steel', 'Aluminum', 'Brass', 'Copper', 'Coated/Powder Coat', 'Anodized'],
-  'Stone':   ['Slate', 'River Rock', 'Jade', 'Marble'],
-  'Plastic': ['Cast Acrylic', 'Extruded Acrylic', 'Other Plastic'],
-  'Fabric':  ['Cotton', 'Denim', 'Canvas', 'Leather', 'Silicone'],
-  'Wood':    ['Hardwood', 'Softwood', 'Plywood', 'Bamboo', 'MDF'],
-  'Paper':   ['Cardstock', 'Kraft', 'Laser Paper'],
-  'PCB':     ['FR4 Isolation', 'FR4 Full Process'],
-  'Other':   ['Custom']
-};
+const CATEGORIES = [
+  'Glass/Ceramics', 'Metal', 'Tumblers', 'Acrylic', 'Plastic/Silicone',
+  'Wood', 'Fabric', 'Electronics', 'Food', 'Sport Products',
+  'Stone/Slate', 'Paper', 'Others'
+];
 
 router.get('/categories', (req, res) => res.json(CATEGORIES));
 
@@ -79,52 +73,61 @@ router.post('/update/run', (req, res) => {
 
 router.get('/export', (req, res) => {
   const db = getDb();
-  const entries = db.prepare(`
-    SELECT m.id, m.name, m.category, m.subcategory, m.notes, m.created_at,
-           s.lens_mm, s.power_percent, s.speed_mms, s.frequency_khz,
-           s.passes, s.line_interval_mm, s.overlap_mm,
-           s.wobble_enabled, s.wobble_amplitude_mm, s.wobble_frequency_hz,
-           s.fill_type, s.rotary_enabled, s.rotary_type,
-           s.result_rating, s.result_notes, s.image_path, s.is_favorite
-    FROM materials m LEFT JOIN settings s ON s.material_id = m.id
-    ORDER BY m.id
-  `).all();
+  const matRows = db.prepare(`SELECT * FROM materials ORDER BY id`).all();
+  const settRows = db.prepare(`SELECT * FROM settings ORDER BY material_id, lens_mm, burn_type`).all();
+  const attRows = db.prepare(`SELECT * FROM attempts ORDER BY material_id, created_at`).all();
+
+  const settMap = {};
+  for (const s of settRows) {
+    if (!settMap[s.material_id]) settMap[s.material_id] = [];
+    settMap[s.material_id].push(s);
+  }
+  const attMap = {};
+  for (const a of attRows) {
+    if (!attMap[a.material_id]) attMap[a.material_id] = [];
+    attMap[a.material_id].push(a);
+  }
+
+  const materials = matRows.map(m => ({
+    ...m,
+    settings: settMap[m.id] || [],
+    attempts: attMap[m.id] || []
+  }));
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition',
     `attachment; filename=laser-settings-backup-${new Date().toISOString().slice(0,10)}.json`);
-  res.json({ version: '1.0', exported_at: new Date().toISOString(), entries });
+  res.json({ version: '2.0', exported_at: new Date().toISOString(), materials });
 });
 
 router.get('/export/csv', (req, res) => {
   const db = getDb();
-  const { search, category, subcategory, rating, favorite, rotary } = req.query;
+  const { search, category, rating, favorite, rotary } = req.query;
 
   let query = `
-    SELECT m.name, m.category, m.subcategory, s.lens_mm, s.power_percent, s.speed_mms,
-           s.frequency_khz, s.passes, s.line_interval_mm, s.overlap_mm,
-           s.wobble_enabled, s.fill_type, s.rotary_enabled, s.rotary_type,
-           s.result_rating, m.notes, s.result_notes
+    SELECT m.name, m.category, s.burn_type, s.lens_mm, s.speed_mms, s.dwell_time_us,
+           s.frequency_khz, s.pulse_width, s.passes, s.line_interval_mm,
+           s.dpi, s.defocus_mm, s.wobble_enabled, s.fill_type,
+           s.rotary_enabled, s.rotary_type, s.result_rating, m.notes, s.result_notes
     FROM materials m LEFT JOIN settings s ON s.material_id = m.id WHERE 1=1
   `;
   const params = [];
   if (search) { query += ` AND (m.name LIKE ? OR m.notes LIKE ?)`; const t = `%${search}%`; params.push(t, t); }
   if (category) { query += ` AND m.category = ?`; params.push(category); }
-  if (subcategory) { query += ` AND m.subcategory = ?`; params.push(subcategory); }
-  if (rating) { query += ` AND s.result_rating >= ?`; params.push(parseInt(rating)); }
+  if (rating)   { query += ` AND s.result_rating >= ?`; params.push(parseInt(rating)); }
   if (favorite === '1') query += ` AND s.is_favorite = 1`;
-  if (rotary === '1') query += ` AND s.rotary_enabled = 1`;
+  if (rotary === '1')   query += ` AND s.rotary_enabled = 1`;
 
   const rows = db.prepare(query).all(...params);
-  const headers = ['Name','Category','Subcategory','Lens(mm)','Power(%)','Speed(mm/s)',
-    'Freq(kHz)','Passes','LineInterval(mm)','Overlap(mm)','Wobble','FillType',
-    'Rotary','RotaryType','Rating','Notes','ResultNotes'];
+  const headers = ['Name','Category','BurnType','Lens(mm)','Speed(mm/s)','DwellTime(us)',
+    'Freq(kHz)','PulseWidth','Passes','LineInterval(mm)','DPI','Defocus(mm)',
+    'Wobble','FillType','Rotary','RotaryType','Rating','Notes','ResultNotes'];
 
   const csv = [headers.join(','), ...rows.map(r =>
-    [r.name, r.category, r.subcategory, r.lens_mm, r.power_percent, r.speed_mms,
-     r.frequency_khz, r.passes, r.line_interval_mm, r.overlap_mm,
-     r.wobble_enabled ? 'Yes' : 'No', r.fill_type, r.rotary_enabled ? 'Yes' : 'No',
-     r.rotary_type, r.result_rating, r.notes, r.result_notes]
+    [r.name, r.category, r.burn_type, r.lens_mm, r.speed_mms, r.dwell_time_us,
+     r.frequency_khz, r.pulse_width, r.passes, r.line_interval_mm,
+     r.dpi, r.defocus_mm, r.wobble_enabled ? 'Yes' : 'No', r.fill_type,
+     r.rotary_enabled ? 'Yes' : 'No', r.rotary_type, r.result_rating, r.notes, r.result_notes]
     .map(v => `"${(v ?? '').toString().replace(/"/g, '""')}"`)
     .join(',')
   )].join('\n');
@@ -136,28 +139,36 @@ router.get('/export/csv', (req, res) => {
 
 router.post('/import', (req, res) => {
   const db = getDb();
-  const { entries } = req.body;
-  if (!entries || !Array.isArray(entries)) return res.status(400).json({ error: 'Invalid backup format' });
+  const { materials } = req.body;
+  if (!materials || !Array.isArray(materials)) return res.status(400).json({ error: 'Invalid backup format — expected v2.0 with materials array' });
 
   try {
     const count = db.transaction(() => {
       let n = 0;
-      for (const e of entries) {
+      for (const m of materials) {
         const { lastInsertRowid: mid } = db.prepare(
-          `INSERT INTO materials (name, category, subcategory, notes) VALUES (?, ?, ?, ?)`
-        ).run(e.name, e.category, e.subcategory, e.notes);
+          `INSERT INTO materials (name, category, notes) VALUES (?, ?, ?)`
+        ).run(m.name, m.category, m.notes || null);
 
-        db.prepare(`
-          INSERT INTO settings (material_id, lens_mm, power_percent, speed_mms, frequency_khz,
-            passes, line_interval_mm, overlap_mm, wobble_enabled, wobble_amplitude_mm,
-            wobble_frequency_hz, fill_type, rotary_enabled, rotary_type, result_rating, result_notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          mid, e.lens_mm, e.power_percent, e.speed_mms, e.frequency_khz,
-          e.passes, e.line_interval_mm, e.overlap_mm, e.wobble_enabled,
-          e.wobble_amplitude_mm, e.wobble_frequency_hz, e.fill_type,
-          e.rotary_enabled, e.rotary_type, e.result_rating, e.result_notes
-        );
+        for (const s of (m.settings || [])) {
+          db.prepare(`
+            INSERT INTO settings (
+              material_id, burn_type, lens_mm,
+              speed_mms, dwell_time_us, frequency_khz, pulse_width,
+              passes, line_interval_mm, dpi, image_mode, defocus_mm,
+              wobble_enabled, wobble_amplitude_mm, wobble_frequency_hz,
+              fill_type, rotary_enabled, rotary_type,
+              result_rating, result_notes, is_favorite
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          `).run(
+            mid, s.burn_type || 'Engraving', s.lens_mm || 150,
+            s.speed_mms ?? null, s.dwell_time_us ?? null, s.frequency_khz ?? null, s.pulse_width ?? null,
+            s.passes || 1, s.line_interval_mm ?? null, s.dpi ?? null, s.image_mode || null, s.defocus_mm ?? null,
+            s.wobble_enabled ? 1 : 0, s.wobble_amplitude_mm ?? null, s.wobble_frequency_hz ?? null,
+            s.fill_type || null, s.rotary_enabled ? 1 : 0, s.rotary_type || null,
+            s.result_rating ?? null, s.result_notes || null, s.is_favorite ? 1 : 0
+          );
+        }
         n++;
       }
       return n;
