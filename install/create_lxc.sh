@@ -37,13 +37,23 @@ RAM=1024
 DISK=8
 CORES=1
 HOSTNAME="laser-tracker"
-OS_TEMPLATE="ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
-TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}"
 
 # ── Download template if needed ───────────────────────────────────────────────
+msg_info "Updating template list"
+pveam update &>/dev/null
+msg_ok "Template list updated"
+
+msg_info "Resolving Ubuntu 22.04 template"
+OS_TEMPLATE=$(pveam available --section system 2>/dev/null \
+  | awk '{print $2}' | grep '^ubuntu-22.04' | sort -V | tail -1)
+if [ -z "$OS_TEMPLATE" ]; then
+  msg_error "No Ubuntu 22.04 template found in pveam — check your Proxmox template sources"
+fi
+TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}"
+msg_ok "Using template: ${OS_TEMPLATE}"
+
 if [ ! -f "$TEMPLATE_PATH" ]; then
-  msg_info "Downloading Ubuntu 22.04 template"
-  pveam update &>/dev/null
+  msg_info "Downloading ${OS_TEMPLATE}"
   pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE" &>/dev/null \
     || msg_error "Failed to download template"
   msg_ok "Template downloaded"
