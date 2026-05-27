@@ -64,7 +64,7 @@ This creates your first settings row. You can add more later from the detail pag
 | **Speed (mm/s)** | Used for engraving/marking/cutting. Leave blank for photo/dwell modes. |
 | **Dwell Time (µs)** | Used for photo/halftone modes instead of speed. Leave blank for standard engraving. |
 | **Frequency (kHz)** | Pulse repetition rate. Higher = more pulses per second. |
-| **Pulse Width** | Pulse duration. Higher values = more energy per pulse. Affects depth vs. burn. |
+| **Qpulse** | Pulse width index (as shown in ComMarker Studio). Higher values = more energy per pulse. Affects depth vs. burn. |
 | **Passes** | Number of times the laser traverses the same path. |
 | **Line Interval (mm)** | Spacing between scan lines. Smaller = finer fill, slower. Typical: 0.02–0.1mm. |
 | **DPI** | For photo/halftone modes. Typical: 850–1250. |
@@ -102,14 +102,14 @@ These are mutually exclusive modes:
 
 For photo work in ComMarker Studio, you set dwell time + DPI instead of speed. Fill the dwell time field and leave speed blank, or vice versa.
 
-### Frequency and Pulse Width
+### Frequency and Qpulse
 These work together and both affect energy delivery:
 
 - **Frequency (kHz)** — how many pulses per second. Typical range: 20–90 kHz.
-- **Pulse Width** — duration of each pulse (nanoseconds, set as an integer index in ComMarker Studio, not a raw time value). Higher = more energy per pulse = deeper/darker mark.
+- **Qpulse** — pulse width index (labeled "Qpulse" in ComMarker Studio, not a raw nanosecond value). Higher = more energy per pulse = deeper/darker mark.
 
 Common starting combos:
-| Operation | Frequency | Pulse Width |
+| Operation | Frequency | Qpulse |
 |---|---|---|
 | Standard engraving | 40 kHz | 3–8 |
 | Black oxide on SS | 80 kHz | 6–9 |
@@ -228,13 +228,13 @@ The ComMarker reference entries (`is_commarker_reference = 1`) are seeded by the
 
 ## 10. Updating the App
 
-From the **Dashboard**, click **Check for Updates**. If a newer version is available on GitHub, an **Update** button appears.
+The **Settings page** auto-checks GitHub releases on load and shows either a green checkmark (up to date) or an **Update Now** button.
 
-Clicking Update will:
+Clicking Update Now will:
 1. Prompt for your update token (set in `/opt/laser-tracker/.env` as `UPDATE_TOKEN`)
 2. Run `git pull origin master`
 3. Run `npm install --production`
-4. Restart the app via PM2
+4. Restart the app via systemd
 
 Your database is never touched during an update.
 
@@ -243,7 +243,7 @@ Your database is never touched during an update.
 cd /opt/laser-tracker
 git pull origin master
 npm install --production --prefix app
-pm2 restart laser-tracker
+systemctl restart laser-tracker
 ```
 
 ---
@@ -363,11 +363,11 @@ The diameter entered in LightBurn does not match the actual diameter at the engr
 
 SSH in and check PM2:
 ```bash
-pm2 logs laser-tracker --lines 50
+journalctl -u laser-tracker -n 50
 ```
 If there's a startup error, check that the `.env` file still exists and `DB_PATH` is pointing to your database file. Restart manually:
 ```bash
-pm2 restart laser-tracker
+systemctl restart laser-tracker
 ```
 
 ### Update token rejected
@@ -379,5 +379,5 @@ nano /opt/laser-tracker/.env
 ```
 After changing the token, restart the app:
 ```bash
-pm2 restart laser-tracker
+systemctl restart laser-tracker
 ```
