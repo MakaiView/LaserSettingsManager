@@ -41,12 +41,12 @@ if ! command -v pveversion &>/dev/null; then
 fi
 
 if ! command -v whiptail &>/dev/null; then
-  msg_error "whiptail is required — install with: apt install whiptail"
+  msg_error "whiptail is required — apt install whiptail"
   exit 1
 fi
 
 # ==============================================================================
-# STORAGE SELECTION
+# STORAGE SELECTION HELPER (adapted from build.func)
 # ==============================================================================
 select_storage() {
   local CLASS=$1 CONTENT CONTENT_LABEL
@@ -69,23 +69,22 @@ select_storage() {
   done < <(pvesm status -content "$CONTENT" 2>/dev/null | awk 'NR>1')
 
   if [[ ${#MENU[@]} -eq 0 ]]; then
-    msg_error "No storage found for '${CONTENT_LABEL}'. Enable '${CONTENT}' on a storage in Datacenter → Storage."
+    msg_error "No storage found for '${CONTENT_LABEL}' — enable '${CONTENT}' content type in Datacenter → Storage"
     exit 1
   fi
 
-  # Auto-select if only one option
+  # Auto-select when only one option exists
   if [[ $((${#MENU[@]} / 3)) -eq 1 ]]; then
     STORAGE_RESULT="${STORAGE_MAP[${MENU[0]}]}"
     return 0
   fi
 
-  # Multiple options — show whiptail menu
   local SELECTED
   SELECTED=$(whiptail \
     --backtitle "Laser Settings Tracker Installer" \
-    --title "Select Storage: ${CONTENT_LABEL}" \
-    --radiolist "\nWhich storage pool for ${CONTENT_LABEL}?\n(Spacebar to select, Enter to confirm)" \
-    16 70 6 "${MENU[@]}" 3>&1 1>&2 2>&3) || { echo ""; exit 0; }
+    --title "Storage Pool: ${CONTENT_LABEL}" \
+    --radiolist "\nWhich storage pool for ${CONTENT_LABEL}?\n(Spacebar to select)" \
+    16 70 6 "${MENU[@]}" 3>&1 1>&2 2>&3) || exit 0
 
   SELECTED=$(echo "$SELECTED" | sed 's/[[:space:]]*$//')
   if [[ -z "$SELECTED" || -z "${STORAGE_MAP[$SELECTED]+_}" ]]; then
@@ -96,58 +95,67 @@ select_storage() {
 }
 
 # ==============================================================================
-# MAIN INSTALL MENU
+# INTERACTIVE INSTALL MENU  (mirrors community-scripts flow)
 # ==============================================================================
 CHOICE=$(whiptail \
   --backtitle "Laser Settings Tracker Installer" \
-  --title "Install Options" \
-  --ok-button "Select" --cancel-button "Exit" \
-  --menu "\nChoose an install mode:" \
-  15 60 3 \
-  "1" "Default Install (recommended)" \
-  "2" "Advanced Install (customize resources)" \
+  --title "Community-Scripts Options" \
+  --ok-button "Select" --cancel-button "Exit Script" \
+  --notags \
+  --menu "\nChoose an option:\n Use TAB or Arrow keys to navigate, ENTER to select." \
+  18 60 3 \
+  "1" "Default Install" \
+  "2" "Advanced Install" \
   3>&1 1>&2 2>&3) || { echo ""; exit 0; }
 
 case "$CHOICE" in
 1)
-  # Default — show settings summary and confirm
+  echo -e "${TAB}${BL}Using Default Settings${CL}"
   if ! whiptail \
     --backtitle "Laser Settings Tracker Installer" \
     --title "Default Settings" \
-    --yesno "\nThe following settings will be used:\n
+    --yesno "\nThe following default settings will be used:\n
   Hostname  : ${NSAPP}
   CPU Cores : ${var_cpu}
   RAM       : ${var_ram} MiB
   Disk      : ${var_disk} GiB
   OS        : Ubuntu ${var_version}
   Type      : Unprivileged LXC\n
-Proceed with these settings?" \
+Proceed?" \
     20 58; then
     exit 0
   fi
   ;;
 2)
-  # Advanced — let user change CPU / RAM / disk
+  echo -e "${TAB}${RD}Using Advanced Install${CL}"
+
   NEW_CPU=$(whiptail \
     --backtitle "Laser Settings Tracker Installer" \
     --title "Advanced: CPU Cores" \
-    --inputbox "\nEnter number of CPU cores:" \
-    10 50 "$var_cpu" 3>&1 1>&2 2>&3) || exit 0
+    --inputbox "\nEnter number of CPU cores (default: ${var_cpu}):" \
+    10 52 "$var_cpu" 3>&1 1>&2 2>&3) || exit 0
   [[ "$NEW_CPU" =~ ^[0-9]+$ && "$NEW_CPU" -ge 1 ]] && var_cpu="$NEW_CPU"
 
   NEW_RAM=$(whiptail \
     --backtitle "Laser Settings Tracker Installer" \
-    --title "Advanced: RAM" \
-    --inputbox "\nEnter RAM in MiB (e.g. 1024, 2048):" \
-    10 50 "$var_ram" 3>&1 1>&2 2>&3) || exit 0
+    --title "Advanced: RAM (MiB)" \
+    --inputbox "\nEnter RAM in MiB (default: ${var_ram}):" \
+    10 52 "$var_ram" 3>&1 1>&2 2>&3) || exit 0
   [[ "$NEW_RAM" =~ ^[0-9]+$ && "$NEW_RAM" -ge 256 ]] && var_ram="$NEW_RAM"
 
   NEW_DISK=$(whiptail \
     --backtitle "Laser Settings Tracker Installer" \
-    --title "Advanced: Disk Size" \
-    --inputbox "\nEnter disk size in GiB (e.g. 8, 16):" \
-    10 50 "$var_disk" 3>&1 1>&2 2>&3) || exit 0
+    --title "Advanced: Disk Size (GiB)" \
+    --inputbox "\nEnter disk size in GiB (default: ${var_disk}):" \
+    10 52 "$var_disk" 3>&1 1>&2 2>&3) || exit 0
   [[ "$NEW_DISK" =~ ^[0-9]+$ && "$NEW_DISK" -ge 4 ]] && var_disk="$NEW_DISK"
+
+  NEW_HOST=$(whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Advanced: Hostname" \
+    --inputbox "\nEnter container hostname (default: ${NSAPP}):" \
+    10 52 "$NSAPP" 3>&1 1>&2 2>&3) || exit 0
+  [[ -n "$NEW_HOST" ]] && NSAPP="$NEW_HOST"
 
   if ! whiptail \
     --backtitle "Laser Settings Tracker Installer" \
@@ -172,17 +180,17 @@ esac
 msg_info "Detecting available storages"
 select_storage template;  TEMPLATE_STORAGE="$STORAGE_RESULT"
 select_storage container; ROOTFS_STORAGE="$STORAGE_RESULT"
-msg_ok "Storages selected — template: ${TEMPLATE_STORAGE}, rootfs: ${ROOTFS_STORAGE}"
+msg_ok "Template storage: ${TEMPLATE_STORAGE} | Container storage: ${ROOTFS_STORAGE}"
 
 # ==============================================================================
-# RESOLVE CTID
+# CTID
 # ==============================================================================
 msg_info "Allocating container ID"
 CTID=$(pvesh get /cluster/nextid)
 msg_ok "Container ID: ${CTID}"
 
 # ==============================================================================
-# RESOLVE TEMPLATE
+# TEMPLATE
 # ==============================================================================
 msg_info "Updating template list"
 pveam update &>/dev/null
@@ -192,16 +200,15 @@ msg_info "Resolving Ubuntu ${var_version} template"
 OS_TEMPLATE=$(pveam available --section system 2>/dev/null \
   | awk '{print $2}' | grep "^ubuntu-${var_version}" | sort -V | tail -1)
 if [[ -z "$OS_TEMPLATE" ]]; then
-  msg_error "No Ubuntu ${var_version} template found in pveam"
+  msg_error "No Ubuntu ${var_version} template found — check Proxmox template sources"
   exit 1
 fi
-TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}"
 msg_ok "Template: ${OS_TEMPLATE}"
 
-if [[ ! -f "$TEMPLATE_PATH" ]]; then
+if [[ ! -f "/var/lib/vz/template/cache/${OS_TEMPLATE}" ]]; then
   msg_info "Downloading ${OS_TEMPLATE}"
   if ! pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE"; then
-    msg_error "Template download failed (see error above)"
+    msg_error "Template download failed"
     exit 1
   fi
   msg_ok "Template downloaded"
@@ -224,7 +231,7 @@ if ! pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}" \
   --onboot 1 \
   --start 0 \
   &>/dev/null; then
-  msg_error "pct create failed"
+  msg_error "Failed to create container"
   exit 1
 fi
 msg_ok "Container CT${CTID} created"
@@ -250,17 +257,36 @@ for i in {1..30}; do
   sleep 2
 done
 if [[ -z "$IP" ]]; then
-  msg_error "Container did not get a network address after 60s — check DHCP on vmbr0"
+  msg_error "Container did not get an IP after 60s — check DHCP on vmbr0"
   exit 1
 fi
 msg_ok "Network ready — ${IP}"
 
 # ==============================================================================
+# LOAD INSTALL FUNCTIONS (same pattern as build.func)
+# Download install.func on host, export as FUNCTIONS_FILE_PATH.
+# lxc-attach inherits exported env vars — install.sh sources it directly.
+# ==============================================================================
+msg_info "Downloading install functions"
+FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/install.func)"
+if [[ -z "$FUNCTIONS_FILE_PATH" || ${#FUNCTIONS_FILE_PATH} -lt 100 ]]; then
+  msg_error "Failed to download install.func"
+  exit 1
+fi
+export FUNCTIONS_FILE_PATH
+export APPLICATION="$APP"
+export app="$NSAPP"
+export VERBOSE="${VERBOSE:-no}"
+msg_ok "Install functions ready"
+
+# ==============================================================================
 # RUN INSTALLER INSIDE CONTAINER
+# lxc-attach (unlike pct exec) inherits the host's exported env vars,
+# so FUNCTIONS_FILE_PATH is available inside the container.
 # ==============================================================================
 msg_info "Running installer inside CT${CTID}"
 echo ""
-pct exec "$CTID" -- bash -c "$(curl -fsSL ${INSTALL_URL})"
+lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL ${INSTALL_URL})"
 INSTALL_EXIT=$?
 echo ""
 if [[ "$INSTALL_EXIT" -ne 0 ]]; then

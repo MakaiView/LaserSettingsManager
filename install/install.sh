@@ -1,42 +1,55 @@
 #!/usr/bin/env bash
 # Laser Settings Tracker — LXC install script
-# Runs INSIDE the LXC container
-set -euo pipefail
+# Runs INSIDE the LXC container via lxc-attach from create_lxc.sh
+# FUNCTIONS_FILE_PATH is exported by create_lxc.sh and inherited via lxc-attach
 
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
-load_functions
+# ==============================================================================
+# LOAD FUNCTIONS
+# install.func bootstraps curl if missing, then sources core.func itself.
+# ==============================================================================
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
+color
+verb_ip6
+catch_errors
+setting_up_container
+network_check
+update_os
 
+# ==============================================================================
+# NODE.JS 20  (setup_nodejs is provided by tools.func, sourced by update_os)
+# ==============================================================================
+msg_info "Installing Node.js 20"
+NODE_VERSION="20" setup_nodejs
+msg_ok "Installed Node.js $(node -v)"
+
+# ==============================================================================
+# PM2
+# ==============================================================================
+msg_info "Installing PM2"
+$STD npm install -g pm2
+msg_ok "Installed PM2"
+
+# ==============================================================================
+# NGINX
+# ==============================================================================
+msg_info "Installing Nginx"
+$STD apt-get install -y nginx
+msg_ok "Installed Nginx"
+
+# ==============================================================================
+# APPLICATION
+# ==============================================================================
 APP_DIR="/opt/laser-tracker"
 REPO="https://github.com/MakaiView/LaserSettingsManager.git"
 
-msg_info "Updating package lists"
-apt-get update -qq &>/dev/null
-msg_ok "Package lists updated"
-
-msg_info "Installing base packages"
-apt-get install -y -qq curl git nginx &>/dev/null
-msg_ok "Base packages installed"
-
-msg_info "Installing Node.js 20.x"
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &>/dev/null
-apt-get install -y -qq nodejs &>/dev/null
-msg_ok "Node.js $(node -v) installed"
-
-msg_info "Installing PM2"
-npm install -g pm2 &>/dev/null
-msg_ok "PM2 installed"
-
-msg_info "Cloning repository"
-mkdir -p "$(dirname "$APP_DIR")"
-if [ -d "$APP_DIR" ]; then
-  git -C "$APP_DIR" pull origin master &>/dev/null
-else
-  git clone "$REPO" "$APP_DIR" &>/dev/null
-fi
-msg_ok "Repository cloned to ${APP_DIR}"
+msg_info "Cloning Laser Settings Tracker"
+$STD git clone "$REPO" "$APP_DIR"
+echo "$(git -C "$APP_DIR" describe --tags --abbrev=0 2>/dev/null || git -C "$APP_DIR" rev-parse --short HEAD)" \
+  > "/opt/${APPLICATION}_version.txt"
+msg_ok "Cloned to ${APP_DIR}"
 
 msg_info "Installing Node.js dependencies"
-npm install --production --prefix "$APP_DIR/app" &>/dev/null
+$STD npm install --production --prefix "$APP_DIR/app"
 msg_ok "Dependencies installed"
 
 msg_info "Creating data directories"
@@ -44,14 +57,15 @@ mkdir -p "$APP_DIR/data/uploads" "$APP_DIR/logs"
 chmod 755 "$APP_DIR/data" "$APP_DIR/data/uploads"
 msg_ok "Data directories created"
 
-msg_info "Creating .env file"
-if [ ! -f "$APP_DIR/.env" ]; then
-  cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-  TOKEN=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 32)
-  sed -i "s/changeme_set_a_real_token_here/$TOKEN/" "$APP_DIR/.env"
-fi
-msg_ok ".env configured"
+msg_info "Configuring environment"
+cp "$APP_DIR/.env.example" "$APP_DIR/.env"
+TOKEN=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
+sed -i "s/changeme_set_a_real_token_here/$TOKEN/" "$APP_DIR/.env"
+msg_ok "Environment configured"
 
+# ==============================================================================
+# NGINX REVERSE PROXY
+# ==============================================================================
 msg_info "Configuring Nginx"
 cat >/etc/nginx/sites-available/laser-tracker <<'NGINX'
 server {
@@ -76,28 +90,26 @@ NGINX
 ln -sf /etc/nginx/sites-available/laser-tracker /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t &>/dev/null
-systemctl enable nginx &>/dev/null
+systemctl enable -q nginx
 systemctl reload nginx
 msg_ok "Nginx configured"
 
+# ==============================================================================
+# PM2 START & STARTUP
+# ==============================================================================
 msg_info "Starting application with PM2"
-pm2 start "$APP_DIR/app/ecosystem.config.js" &>/dev/null
-pm2 save &>/dev/null
-msg_ok "App started with PM2"
+$STD pm2 start "$APP_DIR/app/ecosystem.config.js"
+$STD pm2 save
+msg_ok "Application started"
 
 msg_info "Configuring PM2 startup"
-env PATH="$PATH:/usr/bin" pm2 startup systemd -u root --hp /root &>/dev/null || true
-systemctl enable pm2-root &>/dev/null || true
+env PATH="$PATH:/usr/bin" pm2 startup systemd -u root --hp /root &>/dev/null
+systemctl enable -q pm2-root 2>/dev/null || true
 msg_ok "PM2 startup configured"
 
-IP=$(hostname -I | awk '{print $1}')
-echo ""
-echo -e "${GN}╔══════════════════════════════════════════════╗${CL}"
-echo -e "${GN}║     Laser Settings Tracker — Installed!     ║${CL}"
-echo -e "${GN}╚══════════════════════════════════════════════╝${CL}"
-echo ""
-echo -e "${TAB}${CM} App URL   : ${YW}http://${IP}${CL}"
-echo -e "${TAB}${CM} App dir   : ${YW}${APP_DIR}${CL}"
-echo -e "${TAB}${CM} Database  : ${YW}${APP_DIR}/data/settings.db${CL}"
-echo -e "${TAB}${CM} Env file  : ${YW}${APP_DIR}/.env${CL}  ← edit to change UPDATE_TOKEN"
-echo ""
+# ==============================================================================
+# FINALIZE
+# ==============================================================================
+motd_ssh
+customize
+cleanup_lxc
