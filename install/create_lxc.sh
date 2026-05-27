@@ -31,6 +31,12 @@ var_pw="${var_pw:-}"
 var_verbose="${var_verbose:-no}"
 var_nesting="${var_nesting:-1}"
 
+# Default timezone to host's timezone if not explicitly set
+_HOST_TZ=$(cat /etc/timezone 2>/dev/null \
+  || timedatectl show --property=Timezone --value 2>/dev/null \
+  || echo "UTC")
+var_timezone="${var_timezone:-$_HOST_TZ}"
+
 INSTALL_URL="https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/install.sh"
 
 # ==============================================================================
@@ -580,10 +586,10 @@ PCT_ARGS=(
   --onboot       1
   --start        0
 )
-[[ -n "${var_tags:-}"     ]] && PCT_ARGS+=(--tags       "$var_tags")
-[[ -n "${var_pw:-}"       ]] && PCT_ARGS+=(--password   "$var_pw")
-[[ -n "${var_ns:-}"       ]] && PCT_ARGS+=(--nameserver "$var_ns")
-[[ -n "${var_timezone:-}" ]] && PCT_ARGS+=(--timezone   "$var_timezone")
+[[ -n "${var_tags:-}"  ]] && PCT_ARGS+=(--tags       "$var_tags")
+[[ -n "${var_pw:-}"    ]] && PCT_ARGS+=(--password   "$var_pw")
+[[ -n "${var_ns:-}"    ]] && PCT_ARGS+=(--nameserver "$var_ns")
+PCT_ARGS+=(--timezone "${var_timezone}")
 
 if ! pct create "${PCT_ARGS[@]}" &>/dev/null; then
   msg_error "Failed to create container"

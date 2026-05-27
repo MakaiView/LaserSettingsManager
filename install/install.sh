@@ -18,7 +18,7 @@ $STD apt-get install -y \
   nginx
 msg_ok "Installed Dependencies"
 
-NODE_VERSION="20" setup_nodejs
+NODE_VERSION="22" setup_nodejs
 
 msg_info "Installing Laser Settings Tracker"
 $STD git clone https://github.com/MakaiView/LaserSettingsManager.git /opt/laser-tracker
