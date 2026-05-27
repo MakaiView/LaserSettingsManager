@@ -3,21 +3,11 @@
 # Runs INSIDE the LXC container
 set -euo pipefail
 
-YW=$(echo "\033[33m")
-GN=$(echo "\033[1;92m")
-RD=$(echo "\033[01;31m")
-CL=$(echo "\033[m")
-BFR="\\r\\033[K"
-HOLD="-"
-CM="${GN}✓${CL}"
-CROSS="${RD}✗${CL}"
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
+load_functions
 
 APP_DIR="/opt/laser-tracker"
 REPO="https://github.com/MakaiView/LaserSettingsManager.git"
-
-msg_info()  { echo -ne " ${HOLD} ${YW}${1}...${CL}"; }
-msg_ok()    { echo -e "${BFR} ${CM} ${GN}${1}${CL}"; }
-msg_error() { echo -e "${BFR} ${CROSS} ${RD}${1}${CL}"; exit 1; }
 
 msg_info "Updating package lists"
 apt-get update -qq &>/dev/null
@@ -43,7 +33,7 @@ if [ -d "$APP_DIR" ]; then
 else
   git clone "$REPO" "$APP_DIR" &>/dev/null
 fi
-msg_ok "Repository cloned to $APP_DIR"
+msg_ok "Repository cloned to ${APP_DIR}"
 
 msg_info "Installing Node.js dependencies"
 npm install --production --prefix "$APP_DIR/app" &>/dev/null
@@ -57,17 +47,16 @@ msg_ok "Data directories created"
 msg_info "Creating .env file"
 if [ ! -f "$APP_DIR/.env" ]; then
   cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-  TOKEN=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+  TOKEN=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 32)
   sed -i "s/changeme_set_a_real_token_here/$TOKEN/" "$APP_DIR/.env"
 fi
 msg_ok ".env configured"
 
 msg_info "Configuring Nginx"
-cat > /etc/nginx/sites-available/laser-tracker <<'NGINX'
+cat >/etc/nginx/sites-available/laser-tracker <<'NGINX'
 server {
     listen 80;
     server_name _;
-
     client_max_body_size 10M;
 
     location / {
@@ -87,6 +76,7 @@ NGINX
 ln -sf /etc/nginx/sites-available/laser-tracker /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t &>/dev/null
+systemctl enable nginx &>/dev/null
 systemctl reload nginx
 msg_ok "Nginx configured"
 
@@ -96,8 +86,8 @@ pm2 save &>/dev/null
 msg_ok "App started with PM2"
 
 msg_info "Configuring PM2 startup"
-PM2_STARTUP=$(pm2 startup systemd -u root --hp /root 2>&1 | tail -1)
-eval "$PM2_STARTUP" &>/dev/null || true
+env PATH="$PATH:/usr/bin" pm2 startup systemd -u root --hp /root &>/dev/null || true
+systemctl enable pm2-root &>/dev/null || true
 msg_ok "PM2 startup configured"
 
 IP=$(hostname -I | awk '{print $1}')
@@ -106,8 +96,8 @@ echo -e "${GN}╔═════════════════════
 echo -e "${GN}║     Laser Settings Tracker — Installed!     ║${CL}"
 echo -e "${GN}╚══════════════════════════════════════════════╝${CL}"
 echo ""
-echo -e " ${CM} App URL:   ${YW}http://${IP}${CL}"
-echo -e " ${CM} App dir:   ${YW}${APP_DIR}${CL}"
-echo -e " ${CM} Database:  ${YW}${APP_DIR}/data/settings.db${CL}"
-echo -e " ${CM} Env file:  ${YW}${APP_DIR}/.env${CL}  (edit to set UPDATE_TOKEN)"
+echo -e "${TAB}${CM} App URL   : ${YW}http://${IP}${CL}"
+echo -e "${TAB}${CM} App dir   : ${YW}${APP_DIR}${CL}"
+echo -e "${TAB}${CM} Database  : ${YW}${APP_DIR}/data/settings.db${CL}"
+echo -e "${TAB}${CM} Env file  : ${YW}${APP_DIR}/.env${CL}  ← edit to change UPDATE_TOKEN"
 echo ""

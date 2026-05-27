@@ -5,21 +5,21 @@
 
 source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
 load_functions
-catch_errors
 
 APP="Laser Settings Tracker"
-var_cpu="1"
-var_ram="1024"
-var_disk="8"
+NSAPP="laser-settings-tracker"
+var_cpu=1
+var_ram=1024
+var_disk=8
 var_os="ubuntu"
 var_version="22.04"
-var_unprivileged="1"
+var_unprivileged=1
 
-TEMPLATE_STORAGE="local"
-ROOTFS_STORAGE="local-lvm"
 INSTALL_URL="https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/install.sh"
 
-# ── Header ────────────────────────────────────────────────────────────────────
+# ==============================================================================
+# HEADER
+# ==============================================================================
 clear
 echo -e "${BL}
   _                          _____      _   _   _
@@ -32,24 +32,158 @@ echo -e "${BL}
                                                           |___/
 ${CL}"
 
-msg_ok "Using: ${APP}"
-echo -e "${TAB}${GN}CPU:${CL}   ${var_cpu} core(s)"
-echo -e "${TAB}${GN}RAM:${CL}   ${var_ram} MB"
-echo -e "${TAB}${GN}Disk:${CL}  ${var_disk} GB"
-echo -e "${TAB}${GN}OS:${CL}    Ubuntu ${var_version}"
-echo ""
-
-# ── Verify running on Proxmox host ───────────────────────────────────────────
+# ==============================================================================
+# PRE-FLIGHT
+# ==============================================================================
 if ! command -v pveversion &>/dev/null; then
   msg_error "This script must run on a Proxmox VE host"
+  exit 1
 fi
 
-# ── Resolve next CTID ────────────────────────────────────────────────────────
+if ! command -v whiptail &>/dev/null; then
+  msg_error "whiptail is required — install with: apt install whiptail"
+  exit 1
+fi
+
+# ==============================================================================
+# STORAGE SELECTION
+# ==============================================================================
+select_storage() {
+  local CLASS=$1 CONTENT CONTENT_LABEL
+  case $CLASS in
+    container) CONTENT='rootdir';  CONTENT_LABEL='Container rootfs' ;;
+    template)  CONTENT='vztmpl';   CONTENT_LABEL='Container template' ;;
+  esac
+
+  declare -A STORAGE_MAP
+  local -a MENU=()
+
+  while read -r TAG TYPE _ TOTAL USED FREE _; do
+    [[ -n "$TAG" && -n "$TYPE" ]] || continue
+    local DISPLAY="${TAG} (${TYPE})"
+    local USED_FMT FREE_FMT
+    USED_FMT=$(numfmt --to=iec --from-unit=1024 --format %.1f <<<"${USED:-0}" 2>/dev/null || echo "?")
+    FREE_FMT=$(numfmt --to=iec --from-unit=1024 --format %.1f <<<"${FREE:-0}" 2>/dev/null || echo "?")
+    STORAGE_MAP["$DISPLAY"]="$TAG"
+    MENU+=("$DISPLAY" "Free: ${FREE_FMT}B  Used: ${USED_FMT}B" "OFF")
+  done < <(pvesm status -content "$CONTENT" 2>/dev/null | awk 'NR>1')
+
+  if [[ ${#MENU[@]} -eq 0 ]]; then
+    msg_error "No storage found for '${CONTENT_LABEL}'. Enable '${CONTENT}' on a storage in Datacenter → Storage."
+    exit 1
+  fi
+
+  # Auto-select if only one option
+  if [[ $((${#MENU[@]} / 3)) -eq 1 ]]; then
+    STORAGE_RESULT="${STORAGE_MAP[${MENU[0]}]}"
+    return 0
+  fi
+
+  # Multiple options — show whiptail menu
+  local SELECTED
+  SELECTED=$(whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Select Storage: ${CONTENT_LABEL}" \
+    --radiolist "\nWhich storage pool for ${CONTENT_LABEL}?\n(Spacebar to select, Enter to confirm)" \
+    16 70 6 "${MENU[@]}" 3>&1 1>&2 2>&3) || { echo ""; exit 0; }
+
+  SELECTED=$(echo "$SELECTED" | sed 's/[[:space:]]*$//')
+  if [[ -z "$SELECTED" || -z "${STORAGE_MAP[$SELECTED]+_}" ]]; then
+    msg_error "No storage selected"
+    exit 1
+  fi
+  STORAGE_RESULT="${STORAGE_MAP[$SELECTED]}"
+}
+
+# ==============================================================================
+# MAIN INSTALL MENU
+# ==============================================================================
+CHOICE=$(whiptail \
+  --backtitle "Laser Settings Tracker Installer" \
+  --title "Install Options" \
+  --ok-button "Select" --cancel-button "Exit" \
+  --menu "\nChoose an install mode:" \
+  15 60 3 \
+  "1" "Default Install (recommended)" \
+  "2" "Advanced Install (customize resources)" \
+  3>&1 1>&2 2>&3) || { echo ""; exit 0; }
+
+case "$CHOICE" in
+1)
+  # Default — show settings summary and confirm
+  if ! whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Default Settings" \
+    --yesno "\nThe following settings will be used:\n
+  Hostname  : ${NSAPP}
+  CPU Cores : ${var_cpu}
+  RAM       : ${var_ram} MiB
+  Disk      : ${var_disk} GiB
+  OS        : Ubuntu ${var_version}
+  Type      : Unprivileged LXC\n
+Proceed with these settings?" \
+    20 58; then
+    exit 0
+  fi
+  ;;
+2)
+  # Advanced — let user change CPU / RAM / disk
+  NEW_CPU=$(whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Advanced: CPU Cores" \
+    --inputbox "\nEnter number of CPU cores:" \
+    10 50 "$var_cpu" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW_CPU" =~ ^[0-9]+$ && "$NEW_CPU" -ge 1 ]] && var_cpu="$NEW_CPU"
+
+  NEW_RAM=$(whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Advanced: RAM" \
+    --inputbox "\nEnter RAM in MiB (e.g. 1024, 2048):" \
+    10 50 "$var_ram" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW_RAM" =~ ^[0-9]+$ && "$NEW_RAM" -ge 256 ]] && var_ram="$NEW_RAM"
+
+  NEW_DISK=$(whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Advanced: Disk Size" \
+    --inputbox "\nEnter disk size in GiB (e.g. 8, 16):" \
+    10 50 "$var_disk" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW_DISK" =~ ^[0-9]+$ && "$NEW_DISK" -ge 4 ]] && var_disk="$NEW_DISK"
+
+  if ! whiptail \
+    --backtitle "Laser Settings Tracker Installer" \
+    --title "Confirm Advanced Settings" \
+    --yesno "\nConfirm the following settings:\n
+  Hostname  : ${NSAPP}
+  CPU Cores : ${var_cpu}
+  RAM       : ${var_ram} MiB
+  Disk      : ${var_disk} GiB
+  OS        : Ubuntu ${var_version}
+  Type      : Unprivileged LXC\n
+Proceed?" \
+    20 58; then
+    exit 0
+  fi
+  ;;
+esac
+
+# ==============================================================================
+# STORAGE SELECTION
+# ==============================================================================
+msg_info "Detecting available storages"
+select_storage template;  TEMPLATE_STORAGE="$STORAGE_RESULT"
+select_storage container; ROOTFS_STORAGE="$STORAGE_RESULT"
+msg_ok "Storages selected — template: ${TEMPLATE_STORAGE}, rootfs: ${ROOTFS_STORAGE}"
+
+# ==============================================================================
+# RESOLVE CTID
+# ==============================================================================
 msg_info "Allocating container ID"
 CTID=$(pvesh get /cluster/nextid)
 msg_ok "Container ID: ${CTID}"
 
-# ── Resolve Ubuntu 22.04 template ────────────────────────────────────────────
+# ==============================================================================
+# RESOLVE TEMPLATE
+# ==============================================================================
 msg_info "Updating template list"
 pveam update &>/dev/null
 msg_ok "Template list updated"
@@ -57,27 +191,30 @@ msg_ok "Template list updated"
 msg_info "Resolving Ubuntu ${var_version} template"
 OS_TEMPLATE=$(pveam available --section system 2>/dev/null \
   | awk '{print $2}' | grep "^ubuntu-${var_version}" | sort -V | tail -1)
-if [ -z "$OS_TEMPLATE" ]; then
-  msg_error "No Ubuntu ${var_version} template found — check Proxmox template sources"
+if [[ -z "$OS_TEMPLATE" ]]; then
+  msg_error "No Ubuntu ${var_version} template found in pveam"
+  exit 1
 fi
 TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}"
 msg_ok "Template: ${OS_TEMPLATE}"
 
-# ── Download template if needed ───────────────────────────────────────────────
-if [ ! -f "$TEMPLATE_PATH" ]; then
+if [[ ! -f "$TEMPLATE_PATH" ]]; then
   msg_info "Downloading ${OS_TEMPLATE}"
   if ! pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE"; then
-    msg_error "Failed to download template — check storage content types and network"
+    msg_error "Template download failed (see error above)"
+    exit 1
   fi
   msg_ok "Template downloaded"
 else
   msg_ok "Template already present"
 fi
 
-# ── Create LXC ───────────────────────────────────────────────────────────────
+# ==============================================================================
+# CREATE CONTAINER
+# ==============================================================================
 msg_info "Creating LXC container CT${CTID}"
-pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}" \
-  --hostname laser-tracker \
+if ! pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}" \
+  --hostname "$NSAPP" \
   --memory "$var_ram" \
   --cores "$var_cpu" \
   --rootfs "${ROOTFS_STORAGE}:${var_disk}" \
@@ -86,41 +223,62 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}" \
   --features nesting=1 \
   --onboot 1 \
   --start 0 \
-  &>/dev/null
+  &>/dev/null; then
+  msg_error "pct create failed"
+  exit 1
+fi
 msg_ok "Container CT${CTID} created"
 
-# ── Start container ───────────────────────────────────────────────────────────
+# ==============================================================================
+# START CONTAINER
+# ==============================================================================
 msg_info "Starting container"
-pct start "$CTID"
-sleep 5
+if ! pct start "$CTID"; then
+  msg_error "Failed to start container CT${CTID}"
+  exit 1
+fi
 msg_ok "Container started"
 
-# ── Wait for network ──────────────────────────────────────────────────────────
+# ==============================================================================
+# WAIT FOR NETWORK
+# ==============================================================================
 msg_info "Waiting for network"
 IP=""
-for i in {1..20}; do
+for i in {1..30}; do
   IP=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')
-  [ -n "$IP" ] && break
+  [[ -n "$IP" ]] && break
   sleep 2
 done
-if [ -z "$IP" ]; then
-  msg_error "Container did not get a network address — check DHCP"
+if [[ -z "$IP" ]]; then
+  msg_error "Container did not get a network address after 60s — check DHCP on vmbr0"
+  exit 1
 fi
 msg_ok "Network ready — ${IP}"
 
-# ── Run installer inside container ───────────────────────────────────────────
+# ==============================================================================
+# RUN INSTALLER INSIDE CONTAINER
+# ==============================================================================
 msg_info "Running installer inside CT${CTID}"
-lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL ${INSTALL_URL})"
+echo ""
+pct exec "$CTID" -- bash -c "$(curl -fsSL ${INSTALL_URL})"
+INSTALL_EXIT=$?
+echo ""
+if [[ "$INSTALL_EXIT" -ne 0 ]]; then
+  msg_error "Installer exited with code ${INSTALL_EXIT}"
+  exit 1
+fi
 msg_ok "Installation complete"
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# ==============================================================================
+# DONE
+# ==============================================================================
 echo ""
 echo -e "${GN}╔══════════════════════════════════════════════╗${CL}"
 echo -e "${GN}║     Laser Settings Tracker — Ready!        ║${CL}"
 echo -e "${GN}╚══════════════════════════════════════════════╝${CL}"
 echo ""
-echo -e "${TAB}${CM} Container: CT${CTID}"
-echo -e "${TAB}${CM} URL:       ${YW}http://${IP}${CL}"
+echo -e "${TAB}${CM} Container : CT${CTID} (${NSAPP})"
+echo -e "${TAB}${CM} URL       : ${YW}http://${IP}${CL}"
 echo ""
 echo -e " Open ${YW}http://${IP}${CL} in your browser to get started."
 echo ""
