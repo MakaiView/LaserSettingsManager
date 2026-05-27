@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# Laser Settings Tracker — Proxmox LXC creator
-# Runs on the PROXMOX HOST
+# Copyright (c) 2024-2026 Makai View Media
+# Author: MakaiView (Steve Robinson)
+# License: MIT
+# Source: https://github.com/MakaiView/LaserSettingsManager
 # Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/create_lxc.sh)"
 
 source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
 load_functions
 
 APP="Laser Settings Tracker"
-NSAPP="laser-settings-tracker"
-var_cpu=1
-var_ram=1024
-var_disk=8
-var_os="ubuntu"
-var_version="22.04"
-var_unprivileged=1
+var_tags="${var_tags:-laser;maker}"
+var_cpu="${var_cpu:-1}"
+var_ram="${var_ram:-1024}"
+var_disk="${var_disk:-8}"
+var_os="${var_os:-ubuntu}"
+var_version="${var_version:-22.04}"
+var_unprivileged="${var_unprivileged:-1}"
+var_hostname="${var_hostname:-laser-tracker}"
+var_brg="${var_brg:-vmbr0}"
+var_net="${var_net:-dhcp}"
+var_ssh="${var_ssh:-no}"
 
 INSTALL_URL="https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/install.sh"
 
@@ -40,13 +46,8 @@ if ! command -v pveversion &>/dev/null; then
   exit 1
 fi
 
-if ! command -v whiptail &>/dev/null; then
-  msg_error "whiptail is required — apt install whiptail"
-  exit 1
-fi
-
 # ==============================================================================
-# STORAGE SELECTION HELPER (adapted from build.func)
+# STORAGE SELECTION (adapted from build.func)
 # ==============================================================================
 select_storage() {
   local CLASS=$1 CONTENT CONTENT_LABEL
@@ -69,11 +70,10 @@ select_storage() {
   done < <(pvesm status -content "$CONTENT" 2>/dev/null | awk 'NR>1')
 
   if [[ ${#MENU[@]} -eq 0 ]]; then
-    msg_error "No storage found for '${CONTENT_LABEL}' — enable '${CONTENT}' content type in Datacenter → Storage"
+    msg_error "No storage for '${CONTENT_LABEL}' — enable '${CONTENT}' content type in Datacenter → Storage"
     exit 1
   fi
 
-  # Auto-select when only one option exists
   if [[ $((${#MENU[@]} / 3)) -eq 1 ]]; then
     STORAGE_RESULT="${STORAGE_MAP[${MENU[0]}]}"
     return 0
@@ -81,11 +81,10 @@ select_storage() {
 
   local SELECTED
   SELECTED=$(whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
+    --backtitle "Laser Settings Tracker" \
     --title "Storage Pool: ${CONTENT_LABEL}" \
-    --radiolist "\nWhich storage pool for ${CONTENT_LABEL}?\n(Spacebar to select)" \
+    --radiolist "\nSelect storage for ${CONTENT_LABEL}:\n(Spacebar to select)" \
     16 70 6 "${MENU[@]}" 3>&1 1>&2 2>&3) || exit 0
-
   SELECTED=$(echo "$SELECTED" | sed 's/[[:space:]]*$//')
   if [[ -z "$SELECTED" || -z "${STORAGE_MAP[$SELECTED]+_}" ]]; then
     msg_error "No storage selected"
@@ -95,80 +94,91 @@ select_storage() {
 }
 
 # ==============================================================================
-# INTERACTIVE INSTALL MENU  (mirrors community-scripts flow)
+# MAIN MENU
 # ==============================================================================
 CHOICE=$(whiptail \
-  --backtitle "Laser Settings Tracker Installer" \
+  --backtitle "Laser Settings Tracker" \
   --title "Community-Scripts Options" \
   --ok-button "Select" --cancel-button "Exit Script" \
   --notags \
   --menu "\nChoose an option:\n Use TAB or Arrow keys to navigate, ENTER to select." \
-  18 60 3 \
+  16 60 2 \
   "1" "Default Install" \
   "2" "Advanced Install" \
   3>&1 1>&2 2>&3) || { echo ""; exit 0; }
 
 case "$CHOICE" in
+# ── DEFAULT INSTALL ──────────────────────────────────────────────────────────
 1)
   echo -e "${TAB}${BL}Using Default Settings${CL}"
   if ! whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
+    --backtitle "Laser Settings Tracker" \
     --title "Default Settings" \
     --yesno "\nThe following default settings will be used:\n
-  Hostname  : ${NSAPP}
+  Hostname  : ${var_hostname}
   CPU Cores : ${var_cpu}
   RAM       : ${var_ram} MiB
   Disk      : ${var_disk} GiB
   OS        : Ubuntu ${var_version}
+  Network   : DHCP on ${var_brg}
   Type      : Unprivileged LXC\n
 Proceed?" \
-    20 58; then
+    22 58; then
     exit 0
   fi
   ;;
+
+# ── ADVANCED INSTALL ─────────────────────────────────────────────────────────
 2)
   echo -e "${TAB}${RD}Using Advanced Install${CL}"
 
-  NEW_CPU=$(whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
-    --title "Advanced: CPU Cores" \
-    --inputbox "\nEnter number of CPU cores (default: ${var_cpu}):" \
-    10 52 "$var_cpu" 3>&1 1>&2 2>&3) || exit 0
-  [[ "$NEW_CPU" =~ ^[0-9]+$ && "$NEW_CPU" -ge 1 ]] && var_cpu="$NEW_CPU"
+  NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "Hostname" \
+    --inputbox "\nContainer hostname:" 10 52 "$var_hostname" 3>&1 1>&2 2>&3) || exit 0
+  [[ -n "$NEW" ]] && var_hostname="$NEW"
 
-  NEW_RAM=$(whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
-    --title "Advanced: RAM (MiB)" \
-    --inputbox "\nEnter RAM in MiB (default: ${var_ram}):" \
-    10 52 "$var_ram" 3>&1 1>&2 2>&3) || exit 0
-  [[ "$NEW_RAM" =~ ^[0-9]+$ && "$NEW_RAM" -ge 256 ]] && var_ram="$NEW_RAM"
+  NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "CPU Cores" \
+    --inputbox "\nNumber of CPU cores:" 10 52 "$var_cpu" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW" =~ ^[0-9]+$ && "$NEW" -ge 1 ]] && var_cpu="$NEW"
 
-  NEW_DISK=$(whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
-    --title "Advanced: Disk Size (GiB)" \
-    --inputbox "\nEnter disk size in GiB (default: ${var_disk}):" \
-    10 52 "$var_disk" 3>&1 1>&2 2>&3) || exit 0
-  [[ "$NEW_DISK" =~ ^[0-9]+$ && "$NEW_DISK" -ge 4 ]] && var_disk="$NEW_DISK"
+  NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "RAM (MiB)" \
+    --inputbox "\nRAM in MiB (e.g. 1024, 2048):" 10 52 "$var_ram" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW" =~ ^[0-9]+$ && "$NEW" -ge 256 ]] && var_ram="$NEW"
 
-  NEW_HOST=$(whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
-    --title "Advanced: Hostname" \
-    --inputbox "\nEnter container hostname (default: ${NSAPP}):" \
-    10 52 "$NSAPP" 3>&1 1>&2 2>&3) || exit 0
-  [[ -n "$NEW_HOST" ]] && NSAPP="$NEW_HOST"
+  NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "Disk Size (GiB)" \
+    --inputbox "\nDisk size in GiB:" 10 52 "$var_disk" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW" =~ ^[0-9]+$ && "$NEW" -ge 4 ]] && var_disk="$NEW"
+
+  NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "Network Bridge" \
+    --inputbox "\nNetwork bridge (e.g. vmbr0, vmbr1):" 10 52 "$var_brg" 3>&1 1>&2 2>&3) || exit 0
+  [[ -n "$NEW" ]] && var_brg="$NEW"
+
+  NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "VLAN Tag" \
+    --inputbox "\nVLAN tag (1-4094, leave blank for none):" 10 52 "" 3>&1 1>&2 2>&3) || exit 0
+  [[ "$NEW" =~ ^[0-9]+$ && "$NEW" -ge 1 && "$NEW" -le 4094 ]] && var_vlan="$NEW"
+
+  whiptail --backtitle "Laser Settings Tracker" --title "Enable SSH" \
+    --yesno "\nEnable SSH server in the container?" 10 52 3>&1 1>&2 2>&3 \
+    && var_ssh="yes" || var_ssh="no"
+
+  if [[ "$var_ssh" == "yes" ]]; then
+    NEW=$(whiptail --backtitle "Laser Settings Tracker" --title "SSH Public Key" \
+      --inputbox "\nPaste your SSH public key (optional):" 10 72 "" 3>&1 1>&2 2>&3) || exit 0
+    [[ -n "$NEW" ]] && var_ssh_authorized_key="$NEW"
+  fi
 
   if ! whiptail \
-    --backtitle "Laser Settings Tracker Installer" \
+    --backtitle "Laser Settings Tracker" \
     --title "Confirm Advanced Settings" \
-    --yesno "\nConfirm the following settings:\n
-  Hostname  : ${NSAPP}
+    --yesno "\nConfirm settings:\n
+  Hostname  : ${var_hostname}
   CPU Cores : ${var_cpu}
   RAM       : ${var_ram} MiB
   Disk      : ${var_disk} GiB
-  OS        : Ubuntu ${var_version}
+  Bridge    : ${var_brg}${var_vlan:+  (VLAN ${var_vlan})}
+  SSH       : ${var_ssh}
   Type      : Unprivileged LXC\n
 Proceed?" \
-    20 58; then
+    24 58; then
     exit 0
   fi
   ;;
@@ -180,7 +190,7 @@ esac
 msg_info "Detecting available storages"
 select_storage template;  TEMPLATE_STORAGE="$STORAGE_RESULT"
 select_storage container; ROOTFS_STORAGE="$STORAGE_RESULT"
-msg_ok "Template storage: ${TEMPLATE_STORAGE} | Container storage: ${ROOTFS_STORAGE}"
+msg_ok "Template: ${TEMPLATE_STORAGE} | Container: ${ROOTFS_STORAGE}"
 
 # ==============================================================================
 # CTID
@@ -200,7 +210,7 @@ msg_info "Resolving Ubuntu ${var_version} template"
 OS_TEMPLATE=$(pveam available --section system 2>/dev/null \
   | awk '{print $2}' | grep "^ubuntu-${var_version}" | sort -V | tail -1)
 if [[ -z "$OS_TEMPLATE" ]]; then
-  msg_error "No Ubuntu ${var_version} template found — check Proxmox template sources"
+  msg_error "No Ubuntu ${var_version} template found"
   exit 1
 fi
 msg_ok "Template: ${OS_TEMPLATE}"
@@ -217,27 +227,46 @@ else
 fi
 
 # ==============================================================================
+# BUILD NETWORK OPTIONS
+# ==============================================================================
+NET_OPT="name=eth0,bridge=${var_brg},ip=dhcp"
+[[ "${var_net:-dhcp}" == "dhcp" ]] || NET_OPT="name=eth0,bridge=${var_brg},ip=${var_ip}/${var_cidr},gw=${var_gateway}"
+[[ -n "${var_vlan:-}" ]] && NET_OPT="${NET_OPT},tag=${var_vlan}"
+[[ -n "${var_mtu:-}" ]]  && NET_OPT="${NET_OPT},mtu=${var_mtu}"
+[[ -n "${var_mac:-}" ]]  && NET_OPT="${NET_OPT},hwaddr=${var_mac}"
+
+# ==============================================================================
 # CREATE CONTAINER
 # ==============================================================================
 msg_info "Creating LXC container CT${CTID}"
-if ! pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}" \
-  --hostname "$NSAPP" \
-  --memory "$var_ram" \
-  --cores "$var_cpu" \
-  --rootfs "${ROOTFS_STORAGE}:${var_disk}" \
-  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --unprivileged "$var_unprivileged" \
-  --features nesting=1 \
-  --onboot 1 \
-  --start 0 \
-  &>/dev/null; then
+PCT_ARGS=(
+  "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}"
+  --hostname "$var_hostname"
+  --memory   "$var_ram"
+  --cores    "$var_cpu"
+  --rootfs   "${ROOTFS_STORAGE}:${var_disk}"
+  --net0     "$NET_OPT"
+  --unprivileged "$var_unprivileged"
+  --features nesting=1
+  --onboot 1
+  --start 0
+)
+[[ -n "${var_tags:-}" ]] && PCT_ARGS+=(--tags "$var_tags")
+
+if ! pct create "${PCT_ARGS[@]}" &>/dev/null; then
   msg_error "Failed to create container"
   exit 1
 fi
+
+# SSH configuration
+if [[ "${var_ssh:-no}" == "yes" ]]; then
+  pct set "$CTID" --ssh-public-keys <(echo "${var_ssh_authorized_key:-}") &>/dev/null || true
+fi
+
 msg_ok "Container CT${CTID} created"
 
 # ==============================================================================
-# START CONTAINER
+# START
 # ==============================================================================
 msg_info "Starting container"
 if ! pct start "$CTID"; then
@@ -257,15 +286,15 @@ for i in {1..30}; do
   sleep 2
 done
 if [[ -z "$IP" ]]; then
-  msg_error "Container did not get an IP after 60s — check DHCP on vmbr0"
+  msg_error "No IP address after 60s — check DHCP on ${var_brg}"
   exit 1
 fi
 msg_ok "Network ready — ${IP}"
 
 # ==============================================================================
-# LOAD INSTALL FUNCTIONS (same pattern as build.func)
-# Download install.func on host, export as FUNCTIONS_FILE_PATH.
-# lxc-attach inherits exported env vars — install.sh sources it directly.
+# LOAD INSTALL FUNCTIONS  (same pattern as build.func)
+# Exports install.func content as FUNCTIONS_FILE_PATH.
+# lxc-attach inherits all exported env vars — install.sh sources it directly.
 # ==============================================================================
 msg_info "Downloading install functions"
 FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/install.func)"
@@ -275,14 +304,13 @@ if [[ -z "$FUNCTIONS_FILE_PATH" || ${#FUNCTIONS_FILE_PATH} -lt 100 ]]; then
 fi
 export FUNCTIONS_FILE_PATH
 export APPLICATION="$APP"
-export app="$NSAPP"
-export VERBOSE="${VERBOSE:-no}"
+export app="${var_hostname}"
+export VERBOSE="${var_verbose:-no}"
+export SSH_ROOT="${var_ssh:-no}"
 msg_ok "Install functions ready"
 
 # ==============================================================================
-# RUN INSTALLER INSIDE CONTAINER
-# lxc-attach (unlike pct exec) inherits the host's exported env vars,
-# so FUNCTIONS_FILE_PATH is available inside the container.
+# RUN INSTALLER  (lxc-attach inherits exported env vars; pct exec does not)
 # ==============================================================================
 msg_info "Running installer inside CT${CTID}"
 echo ""
@@ -303,7 +331,7 @@ echo -e "${GN}╔═════════════════════
 echo -e "${GN}║     Laser Settings Tracker — Ready!        ║${CL}"
 echo -e "${GN}╚══════════════════════════════════════════════╝${CL}"
 echo ""
-echo -e "${TAB}${CM} Container : CT${CTID} (${NSAPP})"
+echo -e "${TAB}${CM} Container : CT${CTID} (${var_hostname})"
 echo -e "${TAB}${CM} URL       : ${YW}http://${IP}${CL}"
 echo ""
 echo -e " Open ${YW}http://${IP}${CL} in your browser to get started."

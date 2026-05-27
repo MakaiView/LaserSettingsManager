@@ -61,7 +61,7 @@ router.post('/update/run', (req, res) => {
     try {
       await run('git pull origin master');
       await run('npm install --production', path.join(appDir, 'app'));
-      await run('pm2 restart laser-tracker');
+      await run('systemctl restart laser-tracker');
       log += 'Update complete!\n';
       res.json({ success: true, log });
     } catch (err) {
