@@ -1051,11 +1051,6 @@ a:hover { color: var(--accent-hover); }
   min-width: 48px;
 }
 
-.src-param-item.primary .src-param-val {
-  color: var(--accent);
-  font-size: 19px;
-}
-
 .src-param-label {
   font-size: 9px;
   text-transform: uppercase;

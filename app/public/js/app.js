@@ -443,11 +443,11 @@ const SettingsRowDisplay = {
         </div>
       </div>
       <div class="src-params-grid">
-        <div v-if="s.speed_mms != null" class="src-param-item primary">
+        <div v-if="s.speed_mms != null" class="src-param-item">
           <span class="src-param-label">Speed</span>
           <span class="src-param-val">{{ s.speed_mms }}<small> mm/s</small></span>
         </div>
-        <div v-else-if="s.dwell_time_us != null" class="src-param-item primary">
+        <div v-else-if="s.dwell_time_us != null" class="src-param-item">
           <span class="src-param-label">Dwell</span>
           <span class="src-param-val">{{ s.dwell_time_us }}<small> µs</small></span>
         </div>
@@ -491,7 +491,7 @@ const SettingsRowDisplay = {
           <span class="src-param-label">Rotary</span>
           <span class="src-param-val">{{ s.rotary_type }}</span>
         </div>
-        <div v-if="!s.speed_mms && !s.dwell_time_us" class="src-param-item primary">
+        <div v-if="!s.speed_mms && !s.dwell_time_us" class="src-param-item">
           <span class="src-param-label">Status</span>
           <span class="src-param-val" style="color:var(--warning)">needs dialing</span>
         </div>
