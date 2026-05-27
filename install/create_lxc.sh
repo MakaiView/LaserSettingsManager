@@ -54,7 +54,8 @@ msg_ok "Using template: ${OS_TEMPLATE}"
 
 if [ ! -f "$TEMPLATE_PATH" ]; then
   msg_info "Downloading ${OS_TEMPLATE}"
-  pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE" &>/dev/null \
+  echo ""
+  pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE" \
     || msg_error "Failed to download template"
   msg_ok "Template downloaded"
 else
