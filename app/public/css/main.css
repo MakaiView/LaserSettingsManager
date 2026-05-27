@@ -48,11 +48,6 @@ a:hover { color: var(--accent-hover); }
   transition: transform var(--transition);
 }
 
-.sidebar-brand {
-  padding: 18px 16px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
 .sidebar-brand h1 {
   font-size: 13px;
   font-weight: 700;
@@ -1031,6 +1026,117 @@ a:hover { color: var(--accent-hover); }
 
 /* ── Danger icon button ── */
 .btn-icon.danger:hover { color: var(--error); border-color: var(--error); }
+
+/* ── Sidebar logo ── */
+.sidebar-brand-link { text-decoration: none; display: block; }
+.sidebar-brand-link:hover .sidebar-brand { background: var(--accent-dim); }
+.sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); transition: background var(--transition); }
+.logo-mark { width: 32px; height: 32px; flex-shrink: 0; color: var(--accent); }
+
+/* ── Settings row param grid ── */
+.src-params-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+}
+
+.src-param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 48px;
+}
+
+.src-param-item.primary .src-param-val {
+  color: var(--accent);
+  font-size: 19px;
+}
+
+.src-param-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.src-param-val {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.src-param-val small {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.lens-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+}
+
+/* ── Card speed chip (no accent box) ── */
+.param-chip.mono-bold {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+/* ── Settings page update status ── */
+.update-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 36px;
+}
+
+.update-ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--success);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.update-ok i { font-size: 18px; }
+
+.update-available {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.update-available i { color: var(--accent); }
+
+.version-tag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: var(--text-secondary);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin 1s linear infinite; }
 
 /* ── Responsive additions ── */
 @media (max-width: 768px) {

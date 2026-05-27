@@ -184,8 +184,8 @@ const MaterialCard = {
           <span v-if="entry.settings.length > 3" class="burn-chip muted">+{{ entry.settings.length - 3 }}</span>
         </div>
         <div class="card-params" v-if="best">
-          <span v-if="best.speed_mms != null" class="param-chip highlight">{{ best.speed_mms }} mm/s</span>
-          <span v-else-if="best.dwell_time_us != null" class="param-chip highlight">{{ best.dwell_time_us }}µs</span>
+          <span v-if="best.speed_mms != null" class="param-chip mono-bold">{{ best.speed_mms }} mm/s</span>
+          <span v-else-if="best.dwell_time_us != null" class="param-chip mono-bold">{{ best.dwell_time_us }}µs</span>
           <span v-if="best.frequency_khz != null" class="param-chip">{{ best.frequency_khz }} kHz</span>
           <span v-for="l in lenses" :key="l" class="param-chip lens">{{ l }}mm</span>
         </div>
@@ -287,7 +287,7 @@ const SettingsRowForm = {
             @input="u('frequency_khz', $event.target.value)" min="0" step="1" placeholder="kHz">
         </div>
         <div class="form-group">
-          <label>Pulse Width</label>
+          <label>Qpulse</label>
           <input type="number" :value="form.pulse_width"
             @input="u('pulse_width', $event.target.value)" min="1" step="1" placeholder="e.g. 3">
         </div>
@@ -427,6 +427,7 @@ const SettingsRowDisplay = {
       <div class="src-header">
         <div class="src-burn-type">
           <span class="burn-label">{{ s.burn_type }}</span>
+          <span class="lens-badge">{{ s.lens_mm }}mm</span>
           <span v-if="s.is_commarker_reference" class="ref-badge">ComMarker Ref</span>
         </div>
         <div class="src-actions" v-if="canEdit && !s.is_commarker_reference">
@@ -441,20 +442,59 @@ const SettingsRowDisplay = {
           </button>
         </div>
       </div>
-      <div class="src-params">
-        <span v-if="s.speed_mms != null" class="param-chip highlight">{{ s.speed_mms }} mm/s</span>
-        <span v-else-if="s.dwell_time_us != null" class="param-chip highlight">{{ s.dwell_time_us }}µs dwell</span>
-        <span v-if="s.frequency_khz != null" class="param-chip">{{ s.frequency_khz }} kHz</span>
-        <span v-if="s.pulse_width != null" class="param-chip">PW {{ s.pulse_width }}</span>
-        <span v-if="s.passes != null && s.passes > 1" class="param-chip">{{ s.passes }}x</span>
-        <span v-if="s.line_interval_mm != null" class="param-chip">{{ s.line_interval_mm }}mm int</span>
-        <span v-if="s.dpi != null" class="param-chip">{{ s.dpi }} DPI</span>
-        <span v-if="s.defocus_mm" class="param-chip">⊙ {{ s.defocus_mm }}mm defocus</span>
-        <span v-if="s.wobble_enabled" class="param-chip">wobble</span>
-        <span v-if="s.rotary_enabled" class="param-chip"><i class="bi bi-arrow-repeat"></i> {{ s.rotary_type }}</span>
-        <span v-if="s.fill_type" class="param-chip">{{ s.fill_type }}</span>
-        <span v-if="s.image_mode" class="param-chip">{{ s.image_mode }}</span>
-        <span v-if="!s.speed_mms && !s.dwell_time_us" class="param-chip" style="color:var(--warning)">needs dialing</span>
+      <div class="src-params-grid">
+        <div v-if="s.speed_mms != null" class="src-param-item primary">
+          <span class="src-param-label">Speed</span>
+          <span class="src-param-val">{{ s.speed_mms }}<small> mm/s</small></span>
+        </div>
+        <div v-else-if="s.dwell_time_us != null" class="src-param-item primary">
+          <span class="src-param-label">Dwell</span>
+          <span class="src-param-val">{{ s.dwell_time_us }}<small> µs</small></span>
+        </div>
+        <div v-if="s.frequency_khz != null" class="src-param-item">
+          <span class="src-param-label">Freq</span>
+          <span class="src-param-val">{{ s.frequency_khz }}<small> kHz</small></span>
+        </div>
+        <div v-if="s.pulse_width != null" class="src-param-item">
+          <span class="src-param-label">Qpulse</span>
+          <span class="src-param-val">{{ s.pulse_width }}</span>
+        </div>
+        <div v-if="s.passes != null && s.passes > 1" class="src-param-item">
+          <span class="src-param-label">Passes</span>
+          <span class="src-param-val">{{ s.passes }}</span>
+        </div>
+        <div v-if="s.line_interval_mm != null" class="src-param-item">
+          <span class="src-param-label">Line Int</span>
+          <span class="src-param-val">{{ s.line_interval_mm }}<small> mm</small></span>
+        </div>
+        <div v-if="s.dpi != null" class="src-param-item">
+          <span class="src-param-label">DPI</span>
+          <span class="src-param-val">{{ s.dpi }}</span>
+        </div>
+        <div v-if="s.fill_type" class="src-param-item">
+          <span class="src-param-label">Fill</span>
+          <span class="src-param-val">{{ s.fill_type }}</span>
+        </div>
+        <div v-if="s.defocus_mm" class="src-param-item">
+          <span class="src-param-label">Defocus</span>
+          <span class="src-param-val">{{ s.defocus_mm }}<small> mm</small></span>
+        </div>
+        <div v-if="s.image_mode" class="src-param-item">
+          <span class="src-param-label">Mode</span>
+          <span class="src-param-val">{{ s.image_mode }}</span>
+        </div>
+        <div v-if="s.wobble_enabled" class="src-param-item">
+          <span class="src-param-label">Wobble</span>
+          <span class="src-param-val">{{ s.wobble_amplitude_mm || '—' }}<small>mm</small></span>
+        </div>
+        <div v-if="s.rotary_enabled" class="src-param-item">
+          <span class="src-param-label">Rotary</span>
+          <span class="src-param-val">{{ s.rotary_type }}</span>
+        </div>
+        <div v-if="!s.speed_mms && !s.dwell_time_us" class="src-param-item primary">
+          <span class="src-param-label">Status</span>
+          <span class="src-param-val" style="color:var(--warning)">needs dialing</span>
+        </div>
       </div>
       <div v-if="s.result_rating || s.result_notes" class="src-result">
         <star-rating v-if="s.result_rating" :value="s.result_rating" :readonly="true" size="sm" />
@@ -1161,7 +1201,7 @@ const EntryDetailView = {
             <div class="attempt-params">
               <span v-if="a.speed_mms" class="param-chip">{{ a.speed_mms }} mm/s</span>
               <span v-if="a.frequency_khz" class="param-chip">{{ a.frequency_khz }} kHz</span>
-              <span v-if="a.pulse_width" class="param-chip">PW {{ a.pulse_width }}</span>
+              <span v-if="a.pulse_width" class="param-chip">Qpulse {{ a.pulse_width }}</span>
               <span v-if="a.passes > 1" class="param-chip">{{ a.passes }}x</span>
             </div>
             <div v-if="a.notes" class="attempt-notes">{{ a.notes }}</div>
@@ -1252,10 +1292,15 @@ const EditEntryView = {
 const SettingsView = {
   name: 'SettingsView',
   data() {
-    return { github_repo: '', saved: false, saving: false, importFile: null, importing: false, importResult: '', importError: '' };
+    return {
+      github_repo: '', saved: false, saving: false,
+      importFile: null, importing: false, importResult: '', importError: '',
+      updateStatus: null, checking: false, updating: false, updateLog: ''
+    };
   },
   async mounted() {
     try { const s = await api.get('/settings'); this.github_repo = s.github_repo || ''; } catch {}
+    this.checkUpdate();
   },
   methods: {
     async saveSettings() {
@@ -1264,6 +1309,24 @@ const SettingsView = {
         await api.put('/settings', { github_repo: this.github_repo });
         this.saved = true; setTimeout(() => this.saved = false, 2500);
       } finally { this.saving = false; }
+    },
+    async checkUpdate() {
+      this.checking = true; this.updateStatus = null;
+      try { this.updateStatus = await api.get('/update/check'); }
+      catch (err) { this.updateStatus = { error: err.message }; }
+      finally { this.checking = false; }
+    },
+    async runUpdate() {
+      if (!confirm('Run update now? The app will restart.')) return;
+      this.updating = true; this.updateLog = 'Starting update...\n';
+      try {
+        const token = prompt('Enter update token (from /opt/laser-tracker/.env):');
+        if (!token) { this.updating = false; return; }
+        const res = await fetch('/api/update/run', { method: 'POST', headers: { 'x-update-token': token } });
+        const data = await res.json();
+        this.updateLog = data.log || '';
+      } catch (err) { this.updateLog = 'Error: ' + err.message; }
+      finally { this.updating = false; }
     },
     exportJson() { window.open('/api/export'); },
     onImportFile(e) { this.importFile = e.target.files[0]; },
@@ -1295,6 +1358,36 @@ const SettingsView = {
             <i class="bi bi-check-lg"></i> {{ saving ? 'Saving...' : 'Save' }}
           </button>
           <span v-if="saved" style="color:var(--success);font-size:13px"><i class="bi bi-check-circle"></i> Saved</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Software Update</h3>
+        <div class="update-status-row">
+          <div v-if="checking" style="color:var(--text-secondary);font-size:13px">
+            <i class="bi bi-arrow-repeat spin"></i> Checking for updates...
+          </div>
+          <template v-else-if="updateStatus && !updateStatus.error">
+            <div v-if="!updateStatus.update_available" class="update-ok">
+              <i class="bi bi-check-circle-fill"></i>
+              <span>Up to date <span class="version-tag">{{ updateStatus.current }}</span></span>
+            </div>
+            <div v-else class="update-available">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span><i class="bi bi-arrow-up-circle-fill"></i> Update available: <strong>{{ updateStatus.latest }}</strong> (current: {{ updateStatus.current }})</span>
+                <button class="btn btn-primary btn-sm" @click="runUpdate" :disabled="updating">
+                  <i class="bi bi-download"></i> {{ updating ? 'Updating...' : 'Update Now' }}
+                </button>
+              </div>
+              <div v-if="updateLog" class="log-output" style="margin-top:10px">{{ updateLog }}</div>
+            </div>
+          </template>
+          <div v-else-if="updateStatus && updateStatus.error" style="font-size:13px;color:var(--text-secondary)">
+            <i class="bi bi-exclamation-circle"></i> Could not check: {{ updateStatus.error }}
+          </div>
+          <button class="btn btn-ghost btn-sm" @click="checkUpdate" :disabled="checking" style="margin-left:auto">
+            <i class="bi bi-arrow-repeat"></i> Recheck
+          </button>
         </div>
       </div>
 
@@ -1398,10 +1491,20 @@ const AppLayout = {
     <div class="app-layout">
       <div :class="['sidebar-overlay', { open: sidebarOpen }]" @click="sidebarOpen = false"></div>
       <nav :class="['sidebar', { open: sidebarOpen }]">
-        <div class="sidebar-brand">
-          <h1>&#9632; Laser Tracker</h1>
-          <p>ComMarker Omni XE 6W</p>
-        </div>
+        <router-link to="/" class="sidebar-brand-link" @click="closeNav">
+          <div class="sidebar-brand">
+            <svg class="logo-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="8" y="2" width="16" height="10" rx="2.5" fill="currentColor"/>
+              <polygon points="11,13 21,13 18.5,24 13.5,24" fill="currentColor" opacity="0.6"/>
+              <circle cx="16" cy="27" r="3" fill="currentColor"/>
+              <circle cx="16" cy="27" r="5.5" fill="currentColor" opacity="0.15"/>
+            </svg>
+            <div>
+              <h1>Laser Tracker</h1>
+              <p>ComMarker Omni XE 6W</p>
+            </div>
+          </div>
+        </router-link>
         <div class="sidebar-nav">
           <router-link to="/" class="nav-item" @click="closeNav"><i class="bi bi-house-door"></i> Dashboard</router-link>
           <router-link to="/materials" class="nav-item" @click="closeNav"><i class="bi bi-collection"></i> Materials</router-link>
@@ -1414,7 +1517,7 @@ const AppLayout = {
       <main class="main-content">
         <div class="mobile-header">
           <button class="hamburger" @click="sidebarOpen = !sidebarOpen"><i class="bi bi-list"></i></button>
-          <h1>Laser Tracker</h1>
+          <router-link to="/" style="text-decoration:none"><h1>Laser Tracker</h1></router-link>
         </div>
         <router-view />
       </main>
