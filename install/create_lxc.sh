@@ -2,75 +2,87 @@
 # Laser Settings Tracker — Proxmox LXC creator
 # Runs on the PROXMOX HOST
 # Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/create_lxc.sh)"
-set -euo pipefail
 
-YW=$(echo "\033[33m")
-GN=$(echo "\033[1;92m")
-RD=$(echo "\033[01;31m")
-BL=$(echo "\033[36m")
-CL=$(echo "\033[m")
-BFR="\\r\\033[K"
-HOLD="-"
-CM="${GN}✓${CL}"
-CROSS="${RD}✗${CL}"
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
+load_functions
+catch_errors
 
-msg_info()  { echo -ne " ${HOLD} ${YW}${1}...${CL}"; }
-msg_ok()    { echo -e "${BFR} ${CM} ${GN}${1}${CL}"; }
-msg_error() { echo -e "${BFR} ${CROSS} ${RD}${1}${CL}"; exit 1; }
+APP="Laser Settings Tracker"
+var_cpu="1"
+var_ram="1024"
+var_disk="8"
+var_os="ubuntu"
+var_version="22.04"
+var_unprivileged="1"
+
+TEMPLATE_STORAGE="local"
+ROOTFS_STORAGE="local-lvm"
+INSTALL_URL="https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/install.sh"
+
+# ── Header ────────────────────────────────────────────────────────────────────
+clear
+echo -e "${BL}
+  _                          _____      _   _   _
+ | |    __ _ ___  ___ _ __  / ____|    | | | | (_)
+ | |   / _\` / __|/ _ \\ '__| \\__ \\  ___| |_| |_ _ _ __   __ _ ___
+ | |__| (_| \\__ \\  __/ |    ___) |/ _ \\ __| __| | '_ \\ / _\` / __|
+ |_____\\__,_|___/\\___|_|   |____/ \\___/\\__|\\__|_| | | | (_| \\__ \\
+                                                   |_| |_|\\__, |___/
+                                 Tracker                   __/ |
+                                                          |___/
+${CL}"
+
+msg_ok "Using: ${APP}"
+echo -e "${TAB}${GN}CPU:${CL}   ${var_cpu} core(s)"
+echo -e "${TAB}${GN}RAM:${CL}   ${var_ram} MB"
+echo -e "${TAB}${GN}Disk:${CL}  ${var_disk} GB"
+echo -e "${TAB}${GN}OS:${CL}    Ubuntu ${var_version}"
+echo ""
 
 # ── Verify running on Proxmox host ───────────────────────────────────────────
 if ! command -v pveversion &>/dev/null; then
   msg_error "This script must run on a Proxmox VE host"
 fi
 
-echo ""
-echo -e "${BL}╔══════════════════════════════════════════════╗${CL}"
-echo -e "${BL}║       Laser Settings Tracker Installer      ║${CL}"
-echo -e "${BL}╚══════════════════════════════════════════════╝${CL}"
-echo ""
-
-# ── Config ───────────────────────────────────────────────────────────────────
+# ── Resolve next CTID ────────────────────────────────────────────────────────
+msg_info "Allocating container ID"
 CTID=$(pvesh get /cluster/nextid)
-TEMPLATE_STORAGE="local"
-ROOTFS_STORAGE="local-lvm"
-RAM=1024
-DISK=8
-CORES=1
-HOSTNAME="laser-tracker"
+msg_ok "Container ID: ${CTID}"
 
-# ── Download template if needed ───────────────────────────────────────────────
+# ── Resolve Ubuntu 22.04 template ────────────────────────────────────────────
 msg_info "Updating template list"
 pveam update &>/dev/null
 msg_ok "Template list updated"
 
-msg_info "Resolving Ubuntu 22.04 template"
+msg_info "Resolving Ubuntu ${var_version} template"
 OS_TEMPLATE=$(pveam available --section system 2>/dev/null \
-  | awk '{print $2}' | grep '^ubuntu-22.04' | sort -V | tail -1)
+  | awk '{print $2}' | grep "^ubuntu-${var_version}" | sort -V | tail -1)
 if [ -z "$OS_TEMPLATE" ]; then
-  msg_error "No Ubuntu 22.04 template found in pveam — check your Proxmox template sources"
+  msg_error "No Ubuntu ${var_version} template found — check Proxmox template sources"
 fi
 TEMPLATE_PATH="/var/lib/vz/template/cache/${OS_TEMPLATE}"
-msg_ok "Using template: ${OS_TEMPLATE}"
+msg_ok "Template: ${OS_TEMPLATE}"
 
+# ── Download template if needed ───────────────────────────────────────────────
 if [ ! -f "$TEMPLATE_PATH" ]; then
   msg_info "Downloading ${OS_TEMPLATE}"
-  echo ""
-  pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE" \
-    || msg_error "Failed to download template"
+  if ! pveam download "$TEMPLATE_STORAGE" "$OS_TEMPLATE"; then
+    msg_error "Failed to download template — check storage content types and network"
+  fi
   msg_ok "Template downloaded"
 else
   msg_ok "Template already present"
 fi
 
 # ── Create LXC ───────────────────────────────────────────────────────────────
-msg_info "Creating LXC container (CT${CTID})"
+msg_info "Creating LXC container CT${CTID}"
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${OS_TEMPLATE}" \
-  --hostname "$HOSTNAME" \
-  --memory "$RAM" \
-  --cores "$CORES" \
-  --rootfs "${ROOTFS_STORAGE}:${DISK}" \
+  --hostname laser-tracker \
+  --memory "$var_ram" \
+  --cores "$var_cpu" \
+  --rootfs "${ROOTFS_STORAGE}:${var_disk}" \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --unprivileged 1 \
+  --unprivileged "$var_unprivileged" \
   --features nesting=1 \
   --onboot 1 \
   --start 0 \
@@ -85,32 +97,30 @@ msg_ok "Container started"
 
 # ── Wait for network ──────────────────────────────────────────────────────────
 msg_info "Waiting for network"
+IP=""
 for i in {1..20}; do
   IP=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')
-  if [ -n "$IP" ]; then break; fi
+  [ -n "$IP" ] && break
   sleep 2
 done
 if [ -z "$IP" ]; then
-  msg_error "Container did not get a network address in time. Check DHCP."
+  msg_error "Container did not get a network address — check DHCP"
 fi
-msg_ok "Network ready — IP: ${IP}"
+msg_ok "Network ready — ${IP}"
 
-# ── Run install script inside container ───────────────────────────────────────
-msg_info "Running installer inside container"
-pct exec "$CTID" -- bash -c \
-  "curl -fsSL https://raw.githubusercontent.com/MakaiView/LaserSettingsManager/master/install/install.sh | bash" \
-  2>&1
-msg_ok "Install complete"
+# ── Run installer inside container ───────────────────────────────────────────
+msg_info "Running installer inside CT${CTID}"
+lxc-attach -n "$CTID" -- bash -c "$(curl -fsSL ${INSTALL_URL})"
+msg_ok "Installation complete"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GN}╔══════════════════════════════════════════════╗${CL}"
-echo -e "${GN}║         Laser Tracker — Ready!              ║${CL}"
+echo -e "${GN}║     Laser Settings Tracker — Ready!        ║${CL}"
 echo -e "${GN}╚══════════════════════════════════════════════╝${CL}"
 echo ""
-echo -e " ${CM} Container: CT${CTID} (${HOSTNAME})"
-echo -e " ${CM} IP:        ${YW}${IP}${CL}"
-echo -e " ${CM} URL:       ${YW}http://${IP}${CL}"
+echo -e "${TAB}${CM} Container: CT${CTID}"
+echo -e "${TAB}${CM} URL:       ${YW}http://${IP}${CL}"
 echo ""
 echo -e " Open ${YW}http://${IP}${CL} in your browser to get started."
 echo ""
