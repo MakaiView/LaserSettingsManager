@@ -4,6 +4,16 @@
 # License: MIT
 # Source: https://github.com/MakaiView/LaserSettingsManager
 
+# Full install log — captured before anything runs, regardless of VERBOSE setting
+INSTALL_LOG="/var/log/laser-tracker-install.log"
+mkdir -p /var/log
+exec > >(tee -a "$INSTALL_LOG") 2>&1
+printf "=== Laser Settings Tracker — Container Install Log ===\n"
+printf "=== Started : %s ===\n\n" "$(date)"
+
+# Force verbose so $STD passes all command output to the log
+VERBOSE="yes"
+
 source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
@@ -82,6 +92,9 @@ WantedBy=multi-user.target
 EOF
 systemctl enable -q --now laser-tracker
 msg_ok "Created Service"
+
+printf "\n=== Install complete : %s ===\n" "$(date)"
+printf "=== Log saved at    : %s ===\n" "$INSTALL_LOG"
 
 motd_ssh
 customize

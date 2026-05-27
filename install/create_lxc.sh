@@ -493,6 +493,20 @@ case "$CHOICE" in
 esac
 
 # ==============================================================================
+# START HOST-SIDE LOG
+# (started here so whiptail UI is not polluted; settings are logged first)
+# ==============================================================================
+LOG_FILE="/var/log/laser-tracker-install-$(date +%Y%m%d_%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+printf "=== Laser Settings Tracker — Host Install Log ===\n"
+printf "=== Started : %s ===\n" "$(date)"
+printf "=== Host    : %s ===\n\n" "$(hostname)"
+printf "--- Installer Settings ---\n"
+settings_summary
+printf "\n"
+
+# ==============================================================================
 # STORAGE SELECTION
 # (skipped if var_template_storage / var_container_storage loaded from defaults)
 # ==============================================================================
@@ -675,8 +689,10 @@ echo -e "${GN}╔═════════════════════
 echo -e "${GN}║     Laser Settings Tracker — Ready!        ║${CL}"
 echo -e "${GN}╚══════════════════════════════════════════════╝${CL}"
 echo ""
-echo -e "${TAB}${CM} Container : CT${CTID} (${var_hostname})"
-echo -e "${TAB}${CM} URL       : ${YW}http://${IP}${CL}"
+echo -e "${TAB}${CM} Container  : CT${CTID} (${var_hostname})"
+echo -e "${TAB}${CM} URL        : ${YW}http://${IP}${CL}"
+echo -e "${TAB}${CM} Host log   : ${LOG_FILE}"
+echo -e "${TAB}${CM} Container log : pct exec ${CTID} -- cat /var/log/laser-tracker-install.log"
 echo ""
 echo -e " Open ${YW}http://${IP}${CL} in your browser to get started."
 echo ""
